@@ -7,10 +7,11 @@ import socket
 import ssl
 
 import ceptic.common as common
+from ceptic.common import CepticAbstraction
 
 
 # sort of an abstract class; will not work on its own
-class CepticClientTemplate(object):
+class CepticClientTemplate(CepticAbstraction):
     # don't change this
     threads = []
     context = None
@@ -26,13 +27,11 @@ class CepticClientTemplate(object):
     nullFuncMap = dict(NULL=None)
 
     def __init__(self, location, startTerminal):
-        self.__location__ = location
-        self.injectCommonCode()
+        CepticAbstraction.__init__(self, location)
         self.injectSpecificCode()
         self.startTerminal = startTerminal
         self.shouldExit = False
         self.standalone = True
-        self.protocolManager = self.ProtocolManager(self.__location__)
         self.terminalMap = {"exit": (lambda data: self.exit()), "clear": (lambda data: self.boot()),
                             "help": (lambda data: self.help())}
         self.initialize()
@@ -105,14 +104,6 @@ class CepticClientTemplate(object):
         self.set_terminalMap()
         self.set_funcMap()
         self.run_processes()
-
-    def injectCommonCode(self):
-        self.clear = common.clear
-        self.parse_settings_file = common.parse_settings_file
-        self.get_netPass = common.get_netPass
-        self.ProtocolManager = common.ProtocolManager
-        self.recv_file = common.recv_file
-        self.send_file = common.send_file
 
     def injectSpecificCode(self):
         pass

@@ -11,6 +11,7 @@ import threading
 from time import sleep
 
 import ceptic.common as common
+from ceptic.common import CepticAbstraction
 
 
 def main(argv, templateServer, location):
@@ -39,7 +40,7 @@ def main(argv, templateServer, location):
 
 
 # sort of an abstract class; will not work on its own
-class CepticServerTemplate(object):
+class CepticServerTemplate(CepticAbstraction):
     # don't change this
     threads = []
     pipes = []
@@ -47,7 +48,6 @@ class CepticServerTemplate(object):
     context = None
     netPass = None
     __location__ = None
-    protDict = {}
     # change this to default values
     varDict = dict(version='3.0.0', serverport=9999, userport=10999, useConfigPort=True, send_cache=409600,
                    scriptname=None, name='template', downloadAddrIP='jedkos.com:9011',
@@ -56,14 +56,13 @@ class CepticServerTemplate(object):
     # form is ip:port&&location/on/filetransferserver/file.py
 
     def __init__(self, location, serve=varDict["serverport"], user=varDict["userport"], startUser=True):
+        CepticAbstraction.__init__(self, location)
         self.__location__ = location
-        self.injectCommonCode()
         if serve is not None:
             self.varDict["useConfigPort"] = False
             self.varDict["serverport"] = int(serve)
         self.startUser = startUser
         self.shouldExit = False
-        self.protManager = self.ProtocolManager(self.__location__)
         self.funcMap = {}  # fill in with a string key and a function value
         self.terminalMap = {"exit": (lambda data: self.exit()), "clear": (lambda data: self.clear()),
                             "info": (lambda data: self.info())}
@@ -144,15 +143,6 @@ class CepticServerTemplate(object):
         self.varDict["serverport"] = int(self.varDict["serverport"])
         self.varDict["userport"] = int(self.varDict["userport"])
         self.varDict["send_cache"] = int(self.varDict["send_cache"])
-
-    def injectCommonCode(self):
-        self.clear = common.clear
-        self.parse_settings_file = common.parse_settings_file
-        self.get_netPass = common.get_netPass
-        self.ProtocolManager = common.ProtocolManager
-        self.config = common.config
-        self.recv_file = common.recv_file
-        self.send_file = common.send_file
 
     def generateContextTLS(self):
         cert_loc = os.path.join(self.__location__, 'resources/source/certification')
