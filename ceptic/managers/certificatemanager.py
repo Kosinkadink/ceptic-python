@@ -12,11 +12,14 @@ class CertificateManager(object):
     REQUESTER = None
     context = None
 
-    def __init__(self, request, location):
+    def __init__(self, request, location, certfile=None, keyfile=None, cafile=None):
         """
         Provide requester type and location directory
         :param request: string representing type (CertificateManager.SERVER or CertificateManager.CLIENT)
         :param location: path of CEPtic implementation
+        :param certfile: path of certfile
+        :param keyfile: path of keyfile
+        :param cafile: path of cafile
         """
         self.__location__ = location
         self.REQUEST_MAP = {
@@ -24,6 +27,9 @@ class CertificateManager(object):
             self.CLIENT: self.generate_context_client
         }
         self.assign_request_type(request)
+        self.certfile = certfile
+        self.keyfile = keyfile
+        self.cafile = cafile
 
     def assign_request_type(self, request):
         if request in [self.SERVER, self.CLIENT]:
@@ -50,11 +56,17 @@ class CertificateManager(object):
         :return: 
         """
         cert_loc = os.path.join(self.__location__, 'resources/certification')
+        if self.certfile is None:
+            self.certfile = os.path.join(cert_loc, 'techtem_cert_client.pem')
+        if self.keyfile is None:
+            self.keyfile = os.path.join(cert_loc, 'techtem_client_key.pem')
+        if self.cafile is None:
+            self.cafile = os.path.join(cert_loc, 'techtem_cert.pem')
         self.context = ssl.create_default_context()
-        self.context.load_cert_chain(certfile=os.path.join(cert_loc, 'techtem_cert_client.pem'),
-                                     keyfile=os.path.join(cert_loc, 'techtem_client_key.pem'))
+        self.context.load_cert_chain(certfile=self.certfile,
+                                     keyfile=self.keyfile)
         self.context.check_hostname = False
-        self.context.load_verify_locations(cafile=os.path.join(cert_loc, 'techtem_cert.pem'))
+        self.context.load_verify_locations(cafile=self.cafile)
 
     def generate_context_server(self):
         """
@@ -62,10 +74,16 @@ class CertificateManager(object):
         :return: 
         """
         cert_loc = os.path.join(self.__location__, 'resources/certification')
+        if self.certfile is None:
+            self.certfile = os.path.join(cert_loc, 'techtem_cert.pem')
+        if self.keyfile is None:
+            self.keyfile = os.path.join(cert_loc, 'techtem_server_key.pem')
+        if self.cafile is None:
+            self.cafile = os.path.join(cert_loc, 'techtem_cert_client.pem')
         self.context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-        self.context.load_cert_chain(certfile=os.path.join(cert_loc, 'techtem_cert.pem'),
-                                     keyfile=os.path.join(cert_loc, 'techtem_server_key.pem'))
-        self.context.load_verify_locations(cafile=os.path.join(cert_loc, 'techtem_cert_client.pem'))
+        self.context.load_cert_chain(certfile=self.certfile,
+                                     keyfile=self.keyfile)
+        self.context.load_verify_locations(cafile=self.cafile)
         self.context.verify_mode = ssl.CERT_REQUIRED
 
 

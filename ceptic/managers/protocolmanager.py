@@ -23,12 +23,12 @@ class ProtocolManager(object):
         return sorted(self.available)
 
     def clear_protocols(self):
-        for prot in self.available:
-            self.remove_protocol(prot)
+        for protocol in self.available:
+            self.remove_protocol(protocol)
         self.available.clear()
 
-    def add_protocol(self, name, prot):
-        self.protocols[name] = prot
+    def add_protocol(self, name, protocol):
+        self.protocols[name] = protocol
 
     def remove_protocol(self, name):
         if name in self.protocols:
