@@ -78,7 +78,7 @@ class CepticClientTemplate(CepticAbstraction):
         def_inp = [self.default_command]
         if not input:
             pass
-        elif isinstance(input,list):
+        elif isinstance(input, list):
             def_inp.extend(input)
         else:
             def_inp.append(input)
@@ -117,9 +117,8 @@ class CepticClientTemplate(CepticAbstraction):
         self.context.load_verify_locations(cafile=os.path.join(cert_loc, 'techtem_cert.pem'))
 
     def init_spec(self):
-        if not os.path.exists(
-                    self.__location__ + '/resources/programparts/%s' % self.varDict["scriptname"]): os.makedirs(
-            self.__location__ + '/resources/programparts/%s' % self.varDict["scriptname"])
+        if not os.path.exists(self.__location__ + '/resources/programparts/%s' % self.varDict["scriptname"]):
+            os.makedirs(self.__location__ + '/resources/programparts/%s' % self.varDict["scriptname"])
 
         if not os.path.exists(
                         self.__location__ + '/resources/programparts/%s/serverlist.txt' % self.varDict["scriptname"]):
@@ -138,7 +137,7 @@ class CepticClientTemplate(CepticAbstraction):
     def connect_with_null_dict(self, ip):
         return self.connectip(ip, "None", "NULL", funcMapping=self.nullFuncMap, varDictToUse=self.nullVarDict)
 
-    def connectip(self, ip, data, command, funcMapping=funcMap, dataToStore=None, varDictToUse=None): # connect to ip
+    def connectip(self, ip, data, command, funcMapping=funcMap, dataToStore=None, varDictToUse=None):  # connect to ip
         if not varDictToUse:
             varDictToUse = self.varDict
         try:
@@ -185,9 +184,9 @@ class CepticClientTemplate(CepticAbstraction):
         if conn_resp["status"] != 200:
             s.close()
             print "failure. closing connection: {0}:{1}:{2},{3},{4}".format(conn_resp["status"], conn_resp["msg"],
-                                                                        conn_resp["downloadAddrIP"],
-                                                                        conn_resp["downloadAddrLoc"],
-                                                                        conn_resp["errors"])
+                                                                            conn_resp["downloadAddrIP"],
+                                                                            conn_resp["downloadAddrLoc"],
+                                                                            conn_resp["errors"])
             return conn_resp
         else:
             print "success. continuing..."

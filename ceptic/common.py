@@ -9,9 +9,14 @@ __location__ = None
 
 
 class CepticAbstraction(object):
+    """
+    Object used to store common elements between CepticClient and CepticServer
+    """
+
     def __init__(self, location):
         self.__location__ = location
         self.ProtocolManager = managers.protocolmanager.ProtocolManager
+        self.create_directories()
 
     def inject_functions(self):
         self.clear = clear
@@ -23,6 +28,14 @@ class CepticAbstraction(object):
 
     def initialize_managers(self):
         self.protocolManager = self.ProtocolManager(self.__location__)
+
+
+class CepticException(Exception):
+    """
+    General Ceptic-related exception class
+    """
+    def __init__(self, *args):
+        Exception.__init__(self, *args)
 
 
 class socketCeptic(object):
