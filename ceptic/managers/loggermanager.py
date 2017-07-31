@@ -10,8 +10,6 @@ class LoggerManager(object):
     def __init__(self, location, name=None):
         self.logger_dict = {}
         self.__location__ = location
-        if name is not None:
-            pass
 
     def create_logger(self, name, filename, level=logging.DEBUG):
         logger = logging.getLogger(name)

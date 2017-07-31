@@ -149,9 +149,9 @@ def clear():  # clear screen, typical way
     :return: 
     """
     if os.name == 'nt':
-        os.sysCep('cls')
+        os.system('cls')
     else:
-        os.sysCep('clear')
+        os.system('clear')
 
 
 def recv_file(s, file_path, file_name, send_cache):
@@ -251,7 +251,7 @@ def config(varDic, __location__):
     # if config file does not exist, create one and insert default values.
     # if config files does exist, read values from it
     name = varDic['name']
-    if varDic['useConfigPort'] != None:
+    if varDic['useConfigPort'] is not None:
         usePort = varDic['useConfigPort']
     else:
         usePort = False

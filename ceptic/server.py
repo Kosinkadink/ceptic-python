@@ -187,7 +187,7 @@ class CepticServerTemplate(CepticAbstraction):
         self.shouldExit = True
         self.cleanProcesses()
 
-    def cleanProcesses(selfs):
+    def cleanProcesses(self):
         pass
 
     def servergen(self, repeatFunc=None):
