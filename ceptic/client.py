@@ -160,8 +160,8 @@ class CepticClientTemplate(CepticAbstraction):
                               dataToStore, varDictToUse=varDict):  # communicate via protocol to command seed
         # wrap socket with TLS, handshaking happens automatically
         s = self.context.wrap_socket(s)
-        # wrap socket with socketCeptic, to send length of message first
-        s = common.socketCeptic(s)
+        # wrap socket with SocketCeptic, to send length of message first
+        s = common.SocketCeptic(s)
         # create connection request
         conn_req = json.dumps({
             "netpass": self.netPass,

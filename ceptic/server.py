@@ -247,8 +247,8 @@ class CepticServerTemplate(CepticAbstraction):
         print("Got a connection from %s" % str(addr))
         # wrap socket with TLS, handshaking happens automatically
         s = self.context.wrap_socket(s, server_side=True)
-        # wrap socket with socketCeptic, to send length of message first
-        s = common.socketCeptic(s)
+        # wrap socket with SocketCeptic, to send length of message first
+        s = common.SocketCeptic(s)
         # receive connection request
         client_request = s.recv(1024)
         conn_req = ast.literal_eval(client_request)

@@ -16,7 +16,7 @@ class CepticAbstraction(object):
     def __init__(self, location):
         self.__location__ = location
         self.ProtocolManager = managers.protocolmanager.ProtocolManager
-        self.create_directories()
+        self.FileManager = managers.filemanager.FileManager
 
     def inject_functions(self):
         self.clear = clear
@@ -28,6 +28,7 @@ class CepticAbstraction(object):
 
     def initialize_managers(self):
         self.protocolManager = self.ProtocolManager(self.__location__)
+        self.fileManager = self.FileManager(self.__location__)
 
 
 class CepticException(Exception):
@@ -38,13 +39,11 @@ class CepticException(Exception):
         Exception.__init__(self, *args)
 
 
-class socketCeptic(object):
+class SocketCeptic(object):
     """
     Wrapper for normal or ssl socket; adds necessary CEPtic functionality to sending and receiving.
-    Usage: wrapped_socket = socketCeptic(existing_socket)
+    Usage: wrapped_socket = SocketCeptic(existing_socket)
     """
-    s = None
-
     def __init__(self, s):
         self.s = s
 
@@ -93,7 +92,7 @@ def select_ceptic(read_list, write_list, error_list, timeout):
     read_dict = {}
     write_dict = {}
     error_dict = {}
-    # fill out dicts with socket:socketCeptic pairs
+    # fill out dicts with socket:SocketCeptic pairs
     for sCep in read_list:
         read_dict.setdefault(sCep.getSocket(), sCep)
     for sCep in write_list:
@@ -107,7 +106,7 @@ def select_ceptic(read_list, write_list, error_list, timeout):
     ready_read = []
     ready_write = []
     have_error = []
-    # fill out lists with corresponding socketTems
+    # fill out lists with corresponding SocketCeptics
     for sock in ready_to_read:
         ready_read.append(read_dict[sock])
     for sock in ready_to_write:
@@ -157,7 +156,7 @@ def clear():  # clear screen, typical way
 def recv_file(s, file_path, file_name, send_cache):
     """
     Receive a file to specified location
-    :param s: some socketCeptic instance
+    :param s: some SocketCeptic instance
     :param file_path: full path of save location
     :param file_name: filename of file; for display purposes only
     :param send_cache: amount of bytes to attempt to receive at a time
@@ -195,7 +194,7 @@ def recv_file(s, file_path, file_name, send_cache):
 def send_file(s, file_path, file_name, send_cache):
     """
     Send file from specified location
-    :param s: some socketCeptic instance 
+    :param s: some SocketCeptic instance 
     :param file_path: full path of file location
     :param file_name: filename of file; for display purposes only
     :param send_cache: amount of bytes to attempt to send at a time
