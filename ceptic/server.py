@@ -131,8 +131,7 @@ class CepticServerTemplate(CepticAbstraction):
         # otherwise, read in values from config file
         else:
             with open(os.path.join(self.fileManager.get_directory("specificparts"), "config.json"), "rb") as json_file:
-                string_json = json_file.read()
-                self.varDict = json.loads(string_json, object_pairs_hook=common.decode_unicode_hook)
+                self.varDict = json.load(json_file, object_pairs_hook=common.decode_unicode_hook)
 
     def init_spec(self):
         # add specific program parts directory to fileManager
