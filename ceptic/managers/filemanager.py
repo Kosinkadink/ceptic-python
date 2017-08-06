@@ -9,21 +9,22 @@ class FileManager(object):
     def __init__(self, location):
         self.__location__ = location
         self.locations = {
+            "root": self.__location__,
             "resources": os.path.join(self.__location__, "resources"),
-            "protocols": os.path.join(self.locations["resources"], "protocols"),
-            "cache": os.path.join(self.locations["resources"], "cache"),
-            "programparts": os.path.join(self.locations["resources"], "programparts"),
-            "uploads": os.path.join(self.locations["resources"], "uploads"),
-            "downloads": os.path.join(self.locations["resources"], "downloads"),
-            "networkpass": os.path.join(self.locations["resources"], "networkpass"),
-            "certification": os.path.join(self.locations["resources"], "certification")
+            "protocols": os.path.join(os.path.join(self.__location__, "resources"), "protocols"),
+            "cache": os.path.join(os.path.join(self.__location__, "resources"), "cache"),
+            "programparts": os.path.join(os.path.join(self.__location__, "resources"), "programparts"),
+            "uploads": os.path.join(os.path.join(self.__location__, "resources"), "uploads"),
+            "downloads": os.path.join(os.path.join(self.__location__, "resources"), "downloads"),
+            "networkpass": os.path.join(os.path.join(self.__location__, "resources"), "networkpass"),
+            "certification": os.path.join(os.path.join(self.__location__, "resources"), "certification")
         }
         self.create_directories()
 
     def create_directories(self):
         """
         Create general CEPtic implementation directories
-        :return: 
+        :return: None
         """
         if not os.path.exists(self.locations["resources"]): os.makedirs(self.locations["resources"])
         if not os.path.exists(self.locations["protocols"]): os.makedirs(self.locations["protocols"])
@@ -34,17 +35,23 @@ class FileManager(object):
         if not os.path.exists(self.locations["networkpass"]): os.makedirs(self.locations["networkpass"])
         if not os.path.exists(self.locations["certification"]): os.makedirs(self.locations["certification"])
 
-    def add_directory(self, key, location):
+    def add_directory(self, key, location, base_key=None):
         """
         Add more CEPtic implementation directory bindings
         :param key: string key
-        :param location: directory of binding; if doesn't start with slash, relative to resources
-        :return: 
+        :param location: directory of binding; relative or absolute
+        :param base_key: optional existing dictionary key to reference for start of path
+        :return: None
         """
-        if not location.startswith(self.locations["resources"]):
-            location = os.path.join(self.locations["resources"], location)
-        self.locations[key] = location
+        if base_key is not None and base_key in self.locations:
+            location = os.path.join(self.locations[base_key], location)
+        else:
+            if not location.startswith(self.locations["resources"]):
+                location = os.path.join(self.locations["resources"], location)
+        # try to create directory
         if not os.path.exists(location): os.makedirs(location)
+        # add it to dictionary
+        self.locations[key] = location
 
     def get_directory(self, key):
         """
@@ -56,3 +63,45 @@ class FileManager(object):
             return self.locations[key]
         else:
             return None
+
+    def add_file(self, key, location, base_key=None, text=""):
+        """
+        Add file location bindings to CEPtic implementation directory bindings
+        :param key: string key
+        :param location: directory of binding; relative or absolute
+        :param base_key: optional existing dictionary key to reference for start of path
+        :param text: optional text/bytes to place in file if doesnt exist
+        :return: None
+        """
+        if base_key is not None and base_key in self.locations:
+            location = os.path.join(self.locations[base_key], location)
+        else:
+            if not location.startswith(self.locations["resources"]):
+                location = os.path.join(self.locations["resources"], location)
+        # try to create empty file if doesn't exist
+        if not os.path.exists(location):
+            with open(location, "wb") as seeds:
+                seeds.write(text)
+        # add it to dictionary
+        self.locations[key] = location
+
+    def get_netpass(self, passfilename="default.txt"):
+        """
+        Returns netpass from specified file in networkpass directory, default.txt by default
+        :param passfilename: some .txt filename such as "notdefault.txt", or blank
+        :return: network password (string)
+        """
+        if not os.path.exists(os.path.join(self.locations["networkpass"], passfilename)):
+            with open(os.path.join(self.locations["networkpass"], passfilename),
+                      "a") as protlist:  # file used for identifying what protocols are available
+                pass
+            netpass = None
+        else:
+            with open(os.path.join(self.locations["networkpass"], passfilename),
+                      "r") as protlist:  # file used for identifying what protocols are available
+                netpassword = protlist.readline().strip()
+            if netpassword != '':
+                netpass = netpassword
+            else:
+                netpass = None
+        return netpass

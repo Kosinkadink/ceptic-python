@@ -1,4 +1,5 @@
 from endpointmanager import EndpointManager
+from ceptic.common import CepticException
 
 
 class TerminalManager(EndpointManager):
@@ -17,9 +18,11 @@ class TerminalManager(EndpointManager):
         user_inp = inp.split()
         if not user_inp:
             print("no inp")
-        try:
-            return self.endpointMap[user_inp[0]](user_inp)
-        except KeyError, e:
-            print(str(e))
-            print("ERROR: terminal command {} is not recognized".format(user_inp[0]))
-            return None
+        if user_inp[0] not in self.endpointMap:
+            raise TerminalManagerException("ERROR: terminal command {} is not recognized".format(user_inp[0]))
+        return self.endpointMap[user_inp[0]](user_inp)
+
+
+class TerminalManagerException(CepticException):
+    def __init__(self, *args):
+        CepticException.__init__(self, *args)

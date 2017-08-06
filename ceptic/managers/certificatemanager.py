@@ -1,7 +1,6 @@
-from ceptic.common import CepticException
 import os
 import ssl
-
+from ceptic.common import CepticException
 
 class CertificateManager(object):
     """
@@ -12,7 +11,7 @@ class CertificateManager(object):
     REQUESTER = None
     context = None
 
-    def __init__(self, request, location, certfile=None, keyfile=None, cafile=None):
+    def __init__(self, request, filemanager, certfile=None, keyfile=None, cafile=None):
         """
         Provide requester type and location directory
         :param request: string representing type (CertificateManager.SERVER or CertificateManager.CLIENT)
@@ -21,7 +20,7 @@ class CertificateManager(object):
         :param keyfile: path of keyfile
         :param cafile: path of cafile
         """
-        self.__location__ = location
+        self.fileManager = filemanager
         self.REQUEST_MAP = {
             self.SERVER: self.generate_context_server,
             self.CLIENT: self.generate_context_client
@@ -53,15 +52,14 @@ class CertificateManager(object):
     def generate_context_client(self):
         """
         Generate context for a client implementation
-        :return: 
+        :return: None
         """
-        cert_loc = os.path.join(self.__location__, 'resources/certification')
         if self.certfile is None:
-            self.certfile = os.path.join(cert_loc, 'techtem_cert_client.pem')
+            self.certfile = os.path.join(self.fileManager.get_directory("certification"), 'techtem_cert_client.pem')
         if self.keyfile is None:
-            self.keyfile = os.path.join(cert_loc, 'techtem_client_key.pem')
+            self.keyfile = os.path.join(self.fileManager.get_directory("certification"), 'techtem_client_key.pem')
         if self.cafile is None:
-            self.cafile = os.path.join(cert_loc, 'techtem_cert.pem')
+            self.cafile = os.path.join(self.fileManager.get_directory("certification"), 'techtem_cert_server.pem')
         self.context = ssl.create_default_context()
         self.context.load_cert_chain(certfile=self.certfile,
                                      keyfile=self.keyfile)
@@ -71,15 +69,14 @@ class CertificateManager(object):
     def generate_context_server(self):
         """
         Generate context for a server implementation
-        :return: 
+        :return: None
         """
-        cert_loc = os.path.join(self.__location__, 'resources/certification')
         if self.certfile is None:
-            self.certfile = os.path.join(cert_loc, 'techtem_cert.pem')
+            self.certfile = os.path.join(self.fileManager.get_directory("certification"), 'techtem_cert_server.pem')
         if self.keyfile is None:
-            self.keyfile = os.path.join(cert_loc, 'techtem_server_key.pem')
+            self.keyfile = os.path.join(self.fileManager.get_directory("certification"), 'techtem_server_key.pem')
         if self.cafile is None:
-            self.cafile = os.path.join(cert_loc, 'techtem_cert_client.pem')
+            self.cafile = os.path.join(self.fileManager.get_directory("certification"), 'techtem_cert_client.pem')
         self.context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         self.context.load_cert_chain(certfile=self.certfile,
                                      keyfile=self.keyfile)

@@ -1,11 +1,10 @@
 #!/usr/bin/python2
+
 import os
 import select
 import sys
 
-from ceptic import managers
-
-__location__ = None
+# NOTE: "import ceptic.managers as managers" is found on bottom of file to work around circular import
 
 
 class CepticAbstraction(object):
@@ -15,20 +14,121 @@ class CepticAbstraction(object):
 
     def __init__(self, location):
         self.__location__ = location
-        self.ProtocolManager = managers.protocolmanager.ProtocolManager
-        self.FileManager = managers.filemanager.FileManager
+        self.fileManager = managers.filemanager.FileManager(self.__location__)
+        self.protocolManager = managers.protocolmanager.ProtocolManager(self.__location__)
+        self.terminalManager = managers.terminalmanager.TerminalManager()
+        self.endpointManager = managers.endpointmanager.EndpointManager()
 
-    def inject_functions(self):
-        self.clear = clear
-        self.parse_settings_file = parse_settings_file
-        self.get_netPass = get_netPass
-        self.config = config
-        self.recv_file = recv_file
-        self.send_file = send_file
+    def add_terminal_commands(self):
+        """
+        Add additional terminal commands here by overriding this function
+        :return: None
+        """
+        pass
 
-    def initialize_managers(self):
-        self.protocolManager = self.ProtocolManager(self.__location__)
-        self.fileManager = self.FileManager(self.__location__)
+    def add_endpoint_commands(self):
+        """
+        Add additional endpoints here bu overriding this function
+        :return: None
+        """
+        pass
+
+    def service_terminal(self, inp):  # used for server commands
+        user_inp = inp.split()
+        if not user_inp:
+            pass
+        try:
+            # get command from terminal manager and run it with input
+            return self.terminalManager.get_command(user_inp[0])(user_inp)
+        except TerminalManagerException, e:
+            print str(e)
+        except Exception, e:
+            print str(e)
+
+    def recv_file(self, s, file_path, file_name, send_cache):
+        """
+        Receive a file to specified location
+        :param s: some SocketCeptic instance
+        :param file_path: full path of save location
+        :param file_name: filename of file; for display purposes only
+        :param send_cache: amount of bytes to attempt to receive at a time
+        :return: status of download (success: 200, failure: 400)
+        """
+        # get size of file
+        file_length = int(s.recv(16).strip())
+
+        with open(file_path, 'wb') as f:
+            print("{} receiving...".format(file_name))
+            received = 0
+            while file_length > received:
+                # print progress of download, ignore if cannot display
+                try:
+                    sys.stdout.write(
+                        str((float(received) / file_length) * 100)[:4] + '%   ' + str(received) + '/' + str(file_length)
+                        + 'B\r'
+                    )
+                    sys.stdout.flush()
+                except:
+                    pass
+                data = s.recv(send_cache)
+                if not data:
+                    break
+                received += len(data)
+                f.write(data)
+        # send heartbeat
+        s.sendall("ok")
+        sys.stdout.write('100.0%   ' + str(received) + '/' + str(file_length) + ' B\n')
+        print("{} receiving successful".format(file_name))
+        # return metadata
+        return {"status": 200, "msg": "OK"}
+
+    def send_file(self, s, file_path, file_name, send_cache):
+        """
+        Send file from specified location
+        :param s: some SocketCeptic instance 
+        :param file_path: full path of file location
+        :param file_name: filename of file; for display purposes only
+        :param send_cache: amount of bytes to attempt to send at a time
+        :return: status of upload (success: 200, failure: 400)
+        """
+        # get size of file to be sent
+        file_length = os.path.getsize(file_path)
+        # send size of file
+        s.sendall("%16d" % file_length)
+        # open file and send it
+        with open(file_path, 'rb') as f:
+            print("{} sending...".format(file_name))
+            sent = 0
+            while file_length > sent:
+                # print progress of upload, ignore if cannot display
+                try:
+                    sys.stdout.write(
+                        str((float(sent) / file_length) * 100)[:4] + '%   ' + str(sent) + '/' + str(
+                            file_length) + ' B\r')
+                    sys.stdout.flush()
+                except:
+                    pass
+                data = f.read(send_cache)
+                s.sendall(data)
+                if not data:
+                    break
+                sent += len(data)
+        # get heartbeat
+        s.recv(2)
+        sys.stdout.write('100.0%   ' + str(sent) + '/' + str(file_length) + ' B\n')
+        print("{} sending successful".format(file_name))
+        # return metadata
+        return {"status": 200, "msg": "OK"}
+
+    def clear(self):
+        """
+        Clears screen
+        :return: None
+        """
+        if os.name == 'nt':
+            os.system('cls')
+        else:
+            os.system('clear')
 
 
 class CepticException(Exception):
@@ -142,140 +242,16 @@ def parse_settings_file(location):
     return parsed
 
 
-def clear():  # clear screen, typical way
-    """
-    Clears screen
-    :return: 
-    """
-    if os.name == 'nt':
-        os.system('cls')
-    else:
-        os.system('clear')
+def decode_unicode_hook(json_pairs):
+    new_json_pairs = []
+    for key, value in json_pairs:
+        if isinstance(value, unicode):
+            value = value.encode("utf-8")
+        if isinstance(key, unicode):
+            key = key.encode("utf-8")
+        new_json_pairs.append((key, value))
+    return dict(new_json_pairs)
 
 
-def recv_file(s, file_path, file_name, send_cache):
-    """
-    Receive a file to specified location
-    :param s: some SocketCeptic instance
-    :param file_path: full path of save location
-    :param file_name: filename of file; for display purposes only
-    :param send_cache: amount of bytes to attempt to receive at a time
-    :return: status of download (success: 200, failure: 400)
-    """
-    # get size of file
-    file_length = int(s.recv(16).strip())
-
-    with open(file_path, 'wb') as f:
-        print("{} receiving...".format(file_name))
-        received = 0
-        while file_length > received:
-            # print progress of download, ignore if cannot display
-            try:
-                sys.stdout.write(
-                    str((float(received) / file_length) * 100)[:4] + '%   ' + str(received) + '/' + str(file_length)
-                    + 'B\r'
-                )
-                sys.stdout.flush()
-            except:
-                pass
-            data = s.recv(send_cache)
-            if not data:
-                break
-            received += len(data)
-            f.write(data)
-    # send heartbeat
-    s.sendall("ok")
-    sys.stdout.write('100.0%   ' + str(received) + '/' + str(file_length) + ' B\n')
-    print("{} receiving successful".format(file_name))
-    # return metadata
-    return {"status": 200, "msg": "OK"}
-
-
-def send_file(s, file_path, file_name, send_cache):
-    """
-    Send file from specified location
-    :param s: some SocketCeptic instance 
-    :param file_path: full path of file location
-    :param file_name: filename of file; for display purposes only
-    :param send_cache: amount of bytes to attempt to send at a time
-    :return: status of upload (success: 200, failure: 400)
-    """
-    # get size of file to be sent
-    file_length = os.path.getsize(file_path)
-    # send size of file
-    s.sendall("%16d" % file_length)
-    # open file and send it
-    with open(file_path, 'rb') as f:
-        print("{} sending...".format(file_name))
-        sent = 0
-        while file_length > sent:
-            # print progress of upload, ignore if cannot display
-            try:
-                sys.stdout.write(
-                    str((float(sent) / file_length) * 100)[:4] + '%   ' + str(sent) + '/' + str(file_length) + ' B\r')
-                sys.stdout.flush()
-            except:
-                pass
-            data = f.read(send_cache)
-            s.sendall(data)
-            if not data:
-                break
-            sent += len(data)
-    # get heartbeat
-    s.recv(2)
-    sys.stdout.write('100.0%   ' + str(sent) + '/' + str(file_length) + ' B\n')
-    print("{} sending successful".format(file_name))
-    # return metadata
-    return {"status": 200, "msg": "OK"}
-
-
-def get_netPass(__location__):
-    if not os.path.exists(__location__ + '/resources/networkpass/default.txt'):
-        with open(__location__ + '/resources/networkpass/default.txt',
-                  "a") as protlist:  # file used for identifying what protocols are available
-            pass
-        netPass = None
-    else:
-        with open(__location__ + '/resources/networkpass/default.txt',
-                  "r") as protlist:  # file used for identifying what protocols are available
-            netpassword = protlist.readline().strip()
-        if netpassword != '':
-            netPass = netpassword
-        else:
-            netPass = None
-    return netPass
-
-
-def config(varDic, __location__):
-    # if config file does not exist, create one and insert default values.
-    # if config files does exist, read values from it
-    name = varDic['name']
-    if varDic['useConfigPort'] is not None:
-        usePort = varDic['useConfigPort']
-    else:
-        usePort = False
-
-    if not os.path.exists(__location__ + '/resources/programparts/' + name + '/config.txt'):
-        with open(__location__ + '/resources/programparts/' + name + '/config.txt', "wb") as configs:
-            for key, value in varDic.iteritems():
-                configs.write('{0}={1}\n'.format(key, value))
-    else:
-        oldPort = varDic['serverport']
-        with open(__location__ + '/resources/programparts/' + name + '/config.txt', "r") as configs:
-            for line in configs:
-                try:
-                    args = line.split('=')
-                except:
-                    pass
-                try:
-                    key = args[0].strip()
-                    value = args[1].strip()
-                    varDic[key] = value
-                except Exception, e:
-                    print 'Warning in config: %s' % str(e)
-
-        # if doesnt want to use config port, set old one
-        if not usePort:
-            varDic['serverport'] = oldPort
-
-    return varDic
+import ceptic.managers as managers
+from managers.terminalmanager import TerminalManagerException

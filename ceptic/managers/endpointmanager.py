@@ -20,10 +20,7 @@ class EndpointManager(object):
         :param command: string
         :return: function object to be used
         """
-        if command in self.endpointMap:
-            return self.endpointMap[command]
-        else:
-            return None
+        return self.endpointMap[command]
 
     def remove_command(self, command):
         """

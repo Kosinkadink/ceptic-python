@@ -1,17 +1,16 @@
 #!/usr/bin/python2
 
-import ast
 import getopt
 import json
 import os
 import select
 import socket
-import ssl
 import threading
 from time import sleep
 
 import ceptic.common as common
 from ceptic.common import CepticAbstraction
+from ceptic.managers.certificatemanager import CertificateManager
 
 
 def main(argv, templateServer, location):
@@ -22,11 +21,12 @@ def main(argv, templateServer, location):
     except getopt.GetoptError:
         print('-p [port] or --port [port] only')
         quit()
-    for opt, arg in opts:
-        if opt in ("-p", "--port"):
-            portS = arg
-        if opt in ("-t"):
-            startRawInput = False
+    else:
+        for opt, arg in opts:
+            if opt in ("-p", "--port"):
+                portS = arg
+            if opt in ("-t",):
+                startRawInput = False
 
     if portS is None:
         templateServer(location, startUser=startRawInput).start()
@@ -42,30 +42,31 @@ def main(argv, templateServer, location):
 # sort of an abstract class; will not work on its own
 class CepticServerTemplate(CepticAbstraction):
     # don't change this
-    threads = []
-    pipes = []
     startTime = None
-    context = None
     netPass = None
     __location__ = None
     # change this to default values
-    varDict = dict(version='3.0.0', serverport=9999, userport=10999, useConfigPort=True, send_cache=409600,
-                   scriptname=None, name='template', downloadAddrIP='jedkos.com:9011',
+    varDict = dict(version='3.0.0', serverport=9999, userport=10999, send_cache=409600,
+                   scriptname="template", downloadAddrIP='jedkos.com:9011',
                    downloadAddrLoc='protocols/template.py')
 
-    # form is ip:port&&location/on/filetransferserver/file.py
-
     def __init__(self, location, serve=varDict["serverport"], user=varDict["userport"], startUser=True):
+        self.varDict["serverport"] = int(serve)
+        self.varDict["userport"] = int(user)
         CepticAbstraction.__init__(self, location)
         self.__location__ = location
-        if serve is not None:
-            self.varDict["useConfigPort"] = False
-            self.varDict["serverport"] = int(serve)
         self.startUser = startUser
         self.shouldExit = False
-        self.funcMap = {}  # fill in with a string key and a function value
-        self.terminalMap = {"exit": (lambda data: self.exit()), "clear": (lambda data: self.clear()),
-                            "info": (lambda data: self.info())}
+        # set up basic terminal commands
+        self.terminalManager.add_command("exit", lambda data: self.exit())
+        self.terminalManager.add_command("clear", lambda data: self.clear())
+        self.terminalManager.add_command("info", lambda data: self.info())
+        self.add_terminal_commands()
+        # set up endpoints
+        self.endpointManager.add_command("ping", self.ping_endpoint)
+        self.add_endpoint_commands()
+        # set up certificate manager
+        self.certificateManager = CertificateManager(CertificateManager.SERVER, self.fileManager)
 
     def start(self):
         self.run()
@@ -113,87 +114,65 @@ class CepticServerTemplate(CepticAbstraction):
                 break
 
     def initialize(self):
-        # make directories if don't exist
-        print self.__location__
-        if not os.path.exists(self.__location__ + '/resources'): os.makedirs(self.__location__ + '/resources')
-        if not os.path.exists(self.__location__ + '/resources/protocols'): os.makedirs(
-            self.__location__ + '/resources/protocols')  # for protocol scripts
-        if not os.path.exists(self.__location__ + '/resources/cache'): os.makedirs(
-            self.__location__ + '/resources/cache')  # used to store info for protocols and client
-        if not os.path.exists(self.__location__ + '/resources/programparts'): os.makedirs(
-            self.__location__ + '/resources/programparts')  # for storing protocol files
-        if not os.path.exists(self.__location__ + '/resources/uploads'): os.makedirs(
-            self.__location__ + '/resources/uploads')  # used to store files for upload
-        if not os.path.exists(self.__location__ + '/resources/downloads'): os.makedirs(
-            self.__location__ + '/resources/downloads')  # used to store downloaded files
-        if not os.path.exists(self.__location__ + '/resources/networkpass'): os.makedirs(
-            self.__location__ + '/resources/networkpass')  # contains network passwords
         # perform all tasks
-        self.generateContextTLS()
         self.init_spec()
-        # config stuff
-        self.loadConfig()
-        self.netPass = self.get_netPass(self.__location__)
+        # set up config
+        self.config()
+        self.netPass = self.fileManager.get_netpass()
+        self.certificateManager.generateContextTLS()
+        # run processes now
         self.run_processes()
 
-    def loadConfig(self):
-        # load config values, or create default file
-        self.varDict = self.config(self.varDict, self.__location__)
-        # reassign values
-        self.varDict["serverport"] = int(self.varDict["serverport"])
-        self.varDict["userport"] = int(self.varDict["userport"])
-        self.varDict["send_cache"] = int(self.varDict["send_cache"])
-
-    def generateContextTLS(self):
-        cert_loc = os.path.join(self.__location__, 'resources/source/certification')
-        self.context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-        self.context.load_cert_chain(certfile=os.path.join(cert_loc, 'techtem_cert.pem'),
-                                     keyfile=os.path.join(cert_loc, 'techtem_server_key.pem'))
-        self.context.load_verify_locations(cafile=os.path.join(cert_loc, 'techtem_cert_client.pem'))
-        self.context.verify_mode = ssl.CERT_REQUIRED
+    def config(self):
+        # if config file does not exist, create your own
+        if not os.path.exists(os.path.join(self.fileManager.get_directory("specificparts"), "config.json")):
+            with open(os.path.join(self.fileManager.get_directory("specificparts"), "config.json"), "wb") as json_file:
+                json_file.write(json.dumps(self.varDict))
+        # otherwise, read in values from config file
+        else:
+            with open(os.path.join(self.fileManager.get_directory("specificparts"), "config.json"), "rb") as json_file:
+                string_json = json_file.read()
+                self.varDict = json.loads(string_json, object_pairs_hook=common.decode_unicode_hook)
 
     def init_spec(self):
-        # insert application-specific initialization code here
-        if not os.path.exists(self.__location__ + '/resources/programparts/%s' % self.varDict["name"]):
-            os.makedirs(self.__location__ + '/resources/programparts/%s' % self.varDict["name"])
+        # add specific program parts directory to fileManager
+        self.fileManager.add_directory("specificparts", self.varDict["scriptname"], "programparts")
         self.init_spec_extra()
 
     def init_spec_extra(self):
         pass
 
-    def serverterminal(self, inp):  # used for server commands
-        user_inp = inp.split()
-        if not user_inp:
-            pass
-        try:
-            return self.terminalMap[user_inp[0]](user_inp)
-        except KeyError, e:
-            print str(e)
-            print("ERROR: terminal command {} is not recognized".format(user_inp[0]))
-
     def info(self):  # display current configuration
-        print("INFORMATION:")
-        print("name: %s" % self.varDict["name"])
-        print("version: %s" % self.varDict["version"])
-        print("serverport: %s" % self.varDict["serverport"])
-        print("userport: %s" % self.varDict["userport"])
-        print("send_cache: %s" % self.varDict["send_cache"])
-        print("scriptname: %s" % self.varDict["scriptname"])
-        print("downloadAddrIP: %s" % self.varDict["downloadAddrIP"])
-        print("downloadAddrLoc: %s" % self.varDict["downloadAddrLoc"])
+        """
+        Prints out info about current configuration
+        :return: 
+        """
+        print("-----------")
+        for key in sorted(self.varDict):
+            print("{}: {}".format(key, self.varDict[key]))
         print("")
 
     def exit(self):
         self.shouldExit = True
         self.cleanProcesses()
 
+    def ping_endpoint(self, s, data=None):
+        """
+        Simple endpoint, returns PONG to client
+        :param s: SocketCeptic instance
+        :param data: additional data
+        :return: success state
+        """
+        s.sendall("pong")
+        return {"status": 200, "msg": "ping"}
+
     def cleanProcesses(self):
         pass
 
     def servergen(self, repeatFunc=None):
         print('%s server started - version %s on port %s\n' % (
-            self.varDict["name"], self.varDict["version"], self.varDict["serverport"]))
-        self.get_netPass(self.__location__)
+            self.varDict["scriptname"], self.varDict["version"], self.varDict["serverport"]))
+        self.netPass = self.fileManager.get_netpass()
         # create a socket object
         serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         socketlist = []
@@ -230,7 +209,7 @@ class CepticServerTemplate(CepticAbstraction):
                 if sock == userinput:
                     user, addr = userinput.accept()
                     userinp = user.recv(128)
-                    self.serverterminal(userinp)
+                    self.service_terminal(userinp)
                 elif sock == serversocket:
                     s, addr = serversocket.accept()
                     newthread = threading.Thread(target=self.handleNewConnection, args=(s, addr))
@@ -246,14 +225,15 @@ class CepticServerTemplate(CepticAbstraction):
     def handleNewConnection(self, s, addr):
         print("Got a connection from %s" % str(addr))
         # wrap socket with TLS, handshaking happens automatically
-        s = self.context.wrap_socket(s, server_side=True)
+        s = self.certificateManager.wrap_socket(s)
         # wrap socket with SocketCeptic, to send length of message first
         s = common.SocketCeptic(s)
         # receive connection request
         client_request = s.recv(1024)
-        conn_req = ast.literal_eval(client_request)
+        conn_req = json.loads(client_request, object_pairs_hook=common.decode_unicode_hook)
         # determine if good to go
         readyToGo = True
+        command_function = None
         responses = {"status": 200, "msg": "OK"}
         # check netpass
         if conn_req["netpass"] != self.netPass:
@@ -267,25 +247,26 @@ class CepticServerTemplate(CepticAbstraction):
             readyToGo = False
             responses.setdefault("errors", []).append("invalid version")
         try:
-            func = self.funcMap[conn_req["command"]]
+            command_function = self.endpointManager.get_command(conn_req["command"])
         except KeyError, e:
             readyToGo = False
             responses.setdefault("errors", []).append("command not recognized: %s" % conn_req["command"])
-        # if ready to go, send confirmation and continue
-        if readyToGo:
-            conn_resp = json.dumps(responses)
-            s.sendall(conn_resp)
-            if conn_req["data"] is None:
-                func(s)
+        finally:
+            # if ready to go, send confirmation and continue
+            if readyToGo:
+                conn_resp = json.dumps(responses)
+                s.sendall(conn_resp)
+                if conn_req["data"] is None:
+                    command_function(s)
+                else:
+                    command_function(s, conn_req["data"])
+            # otherwise send info back
             else:
-                func(s, conn_req["data"])
-        # otherwise send info back
-        else:
-            responses["status"] = 400
-            responses["msg"] = "BAD"
-            responses["downloadAddrIP"] = self.varDict["downloadAddrIP"]
-            responses["downloadAddrLoc"] = self.varDict["downloadAddrLoc"]
-            responses["scriptname"] = self.varDict["scriptname"]
-            responses["version"] = self.varDict["version"]
-            conn_resp = json.dumps(responses)
-            s.sendall(conn_resp)
+                responses["status"] = 400
+                responses["msg"] = "BAD"
+                responses["downloadAddrIP"] = self.varDict["downloadAddrIP"]
+                responses["downloadAddrLoc"] = self.varDict["downloadAddrLoc"]
+                responses["scriptname"] = self.varDict["scriptname"]
+                responses["version"] = self.varDict["version"]
+                conn_resp = json.dumps(responses)
+                s.sendall(conn_resp)
