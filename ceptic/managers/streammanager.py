@@ -15,15 +15,27 @@ class StreamManager(threading.Thread):
     """
     Used for managing a stream of data to and from a socket; input a socket
     """
-    def __init__(self, s):
+    REPLACE_NONE = 0
+    REPLACE_FRAME = 1
+    REPLACE_TERM = 2
+    REPLACE_BOTH = 3
+
+    def __init__(self, s, replace_method=REPLACE_TERM):
         threading.Thread.__init__(self)
         self.s = s
+        self.REPLACE_METHOD = replace_method
         self.stream_dictionary = {}
         self.to_send_queue = []
         self.dictionary_lock = threading.Lock()
         self.queue_lock = threading.Lock()
         self.should_run = threading.Event()
         self.timeout = 0.01
+        self.replace_behavior = {
+            self.REPLACE_NONE: self.replace_none,
+            self.REPLACE_FRAME: self.replace_frame_only,
+            self.REPLACE_TERM: self.replace_term_only,
+            self.REPLACE_BOTH: self.replace_both
+        }
 
     def run(self):
         if not self.should_run.isSet():
@@ -31,8 +43,28 @@ class StreamManager(threading.Thread):
             # if ready to read, attempt to get frame from socket
             for sock in ready_to_read:
                 # get frame
-                receivedFrame = StreamFrame().recv_frame(sock)
+                received_frame = StreamFrame().recv_frame(sock)
+                # if id exists in dictionary, replace appropriate part of it
+                if received_frame.id in self.stream_dictionary:
+                    self.replace_behavior[self.REPLACE_METHOD](received_frame)
+                else:
+                    self.add_frame_to_dict(received_frame)
             # if there is new frame(s) to send, attempt to send frame to socket
+
+    def add_frame_to_dict(self, frame_to_add):
+        self.stream_dictionary[frame_to_add.id] = frame_to_add
+
+    def replace_none(self, received_frame):
+        pass
+
+    def replace_frame_only(self, received_frame):
+        self.stream_dictionary[received_frame.id].frame_data = received_frame.frame_data
+
+    def replace_term_only(self, received_frame):
+        self.stream_dictionary[received_frame].term_data = received_frame.term_data
+
+    def replace_both(self, received_frame):
+        self.add_frame_to_dict(received_frame)
 
     def pop(self, frame_id):
         """
@@ -73,15 +105,21 @@ class StreamFrame(object):
     """
     Class for storing data for a frame in a stream
     """
-    def __init__(self, frame_data=None, term_data=None):
+    def __init__(self, frame_data=None, term_data=None, buffer_size=1024000):
         self.id = str(uuid.uuid4())
-        self.buffering_size = 1024000
+        self.buffering_size = buffer_size
         self.frame_data = frame_data
         self.term_data = term_data
         self.done = False
 
     def is_done(self):
         return self.done
+
+    def set_done(self):
+        self.done = True
+
+    def unset_done(self):
+        self.done = False
 
     def get_id(self):
         return self.id
@@ -101,6 +139,8 @@ class StreamFrame(object):
         raw_frame_data_list = []
         raw_term_data_list = []
         received = 0
+        # get StreamFrame UUID
+        self.id = str(s.recv(36).strip())
         # get size of frame data and term data
         frame_data_size = int(s.recv(16).strip())
         term_data_size = int(s.recv(16).strip())
@@ -128,7 +168,7 @@ class StreamFrame(object):
         # return itself
         return self
 
-    def send_frame(self,s):
+    def send_frame(self, s):
         """
         Sends StreamFrame data via provided port
         :param s: socket used to send frame
@@ -140,7 +180,8 @@ class StreamFrame(object):
         # get sizes of data to be sent (16 byte blocks)
         frame_data_size = '%16d' % len(self.frame_data)
         term_data_size = '%16d' % len(self.term_data)
-        # send frame data size, term data size, frame data, and term data (in that order)
+        # send id, frame data size, term data size, frame data, and term data (in that order)
+        s.sendall(self.id)
         s.sendall(frame_data_size)
         s.sendall(term_data_size)
         s.sendall(self.frame_data)
