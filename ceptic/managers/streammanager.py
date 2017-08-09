@@ -1,5 +1,6 @@
 import uuid
 import threading
+from collections import deque
 from ceptic.common import CepticException, select_ceptic
 
 
@@ -20,16 +21,19 @@ class StreamManager(threading.Thread):
     REPLACE_TERM = 2
     REPLACE_BOTH = 3
 
-    def __init__(self, s, replace_method=REPLACE_TERM):
+    def __init__(self, s, replace_method=REPLACE_BOTH, remove_on_send=False):
         threading.Thread.__init__(self)
         self.s = s
         self.REPLACE_METHOD = replace_method
-        self.stream_dictionary = {}
-        self.to_send_queue = []
+        # start of stream variables
+        self.stream_dictionary = dict()
+        self.frames_to_send = deque()
+        self.frames_to_read = deque()
+        # end of stream variables
         self.dictionary_lock = threading.Lock()
-        self.queue_lock = threading.Lock()
         self.should_run = threading.Event()
         self.timeout = 0.01
+        self.remove_on_send = remove_on_send
         self.replace_behavior = {
             self.REPLACE_NONE: self.replace_none,
             self.REPLACE_FRAME: self.replace_frame_only,
@@ -38,7 +42,7 @@ class StreamManager(threading.Thread):
         }
 
     def run(self):
-        if not self.should_run.isSet():
+        while not self.should_run.isSet():
             ready_to_read, ready_to_write, in_error = select_ceptic([self.s], [], [], self.timeout)
             # if ready to read, attempt to get frame from socket
             for sock in ready_to_read:
@@ -49,22 +53,66 @@ class StreamManager(threading.Thread):
                     self.replace_behavior[self.REPLACE_METHOD](received_frame)
                 else:
                     self.add_frame_to_dict(received_frame)
+                # add frame into ready to read deque
+                self.frames_to_read.append(received_frame.get_id())
             # if there is new frame(s) to send, attempt to send frame to socket
+            if self.is_ready_to_send():
+                frame_to_send = self.get_ready_to_send()
+                frame_to_send.send_frame(self.s)
+                if self.remove_on_send:
+                    self.pop(frame_to_send.get_id())
 
-    def add_frame_to_dict(self, frame_to_add):
-        self.stream_dictionary[frame_to_add.id] = frame_to_add
-
+    # start of replace functions
     def replace_none(self, received_frame):
         pass
 
     def replace_frame_only(self, received_frame):
-        self.stream_dictionary[received_frame.id].frame_data = received_frame.frame_data
+        self.stream_dictionary[received_frame.get_id()].frame_data = received_frame.frame_data
 
     def replace_term_only(self, received_frame):
-        self.stream_dictionary[received_frame].term_data = received_frame.term_data
+        self.stream_dictionary[received_frame.get_id()].term_data = received_frame.term_data
 
     def replace_both(self, received_frame):
         self.add_frame_to_dict(received_frame)
+    # end of replace functions
+
+    # start of check if ready to read and write functions
+    def is_ready_to_send(self):
+        """
+        Returns if a frame is ready to be sent
+        :return: boolean corresponding to if a frame is ready to be sent
+        """
+        return len(self.frames_to_send) > 0
+
+    def is_ready_to_read(self):
+        """
+        Returns if a frame is ready to be read
+        :return: boolean corresponding to if a frame is ready to be read
+        """
+        return len(self.frames_to_read) > 0
+
+    def get_ready_to_send(self):
+        """
+        Return latest frame to send; pops frame id from frames_to_send deque
+        :return: latest StreamFrame to send
+        """
+        return self.stream_dictionary[self.frames_to_send.popleft()]
+
+    def get_ready_to_read(self):
+        """
+        Return latest frame to read; pops frame id from frames_to_read deque
+        :return: latest StreamFrame to read
+        """
+        return self.stream_dictionary[self.frames_to_read.popleft()]
+    #  end of check if ready to read and write functions
+
+    def add_frame_to_dict(self, frame_to_add):
+        """
+        Add frame to frame dictionary
+        :param frame_to_add: StreamFrame to add
+        :return: None
+        """
+        self.stream_dictionary[frame_to_add.get_id()] = frame_to_add
 
     def pop(self, frame_id):
         """
@@ -72,17 +120,14 @@ class StreamManager(threading.Thread):
         :param frame_id: string uuid mapped to StreamFrame object in dictionary
         :return: StreamFrame object if exists, None if does not
         """
-        self.dictionary_lock.acquire()
         self.stream_dictionary.pop(frame_id, None)
-        self.dictionary_lock.release()
 
     def stop(self):
         self.should_run.set()
 
     def add_frame(self, frame):
-        self.queue_lock.acquire()
-        self.to_send_queue.append(frame)
-        self.queue_lock.release()
+        self.stream_dictionary[frame.get_id()] = frame
+        self.frames_to_send.append(frame)
 
     def set_processing_function(self, new_process_frame_function):
         """

@@ -47,7 +47,7 @@ class CepticServerTemplate(CepticAbstraction):
     __location__ = None
     # change this to default values
     varDict = dict(version='3.0.0', serverport=9999, userport=10999, send_cache=409600,
-                   scriptname="template", downloadAddrIP='jedkos.com:9011',
+                   scriptname="template", downloadAddrIp='jedkos.com:9011',
                    downloadAddrLoc='protocols/template.py')
 
     def __init__(self, location, serve=varDict["serverport"], user=varDict["userport"], startUser=True):
@@ -263,7 +263,7 @@ class CepticServerTemplate(CepticAbstraction):
             else:
                 responses["status"] = 400
                 responses["msg"] = "BAD"
-                responses["downloadAddrIP"] = self.varDict["downloadAddrIP"]
+                responses["downloadAddrIp"] = self.varDict["downloadAddrIp"]
                 responses["downloadAddrLoc"] = self.varDict["downloadAddrLoc"]
                 responses["scriptname"] = self.varDict["scriptname"]
                 responses["version"] = self.varDict["version"]
