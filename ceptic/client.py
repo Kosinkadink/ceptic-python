@@ -41,7 +41,7 @@ class CepticClientTemplate(CepticAbstraction):
         # perform all tasks
         self.init_spec()
         self.netPass = self.fileManager.get_netpass()
-        self.certificateManager.generateContextTLS()
+        self.certificateManager.generate_context_tls()
         self.run_processes()
 
     def run_processes(self):

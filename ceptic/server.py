@@ -119,7 +119,7 @@ class CepticServerTemplate(CepticAbstraction):
         # set up config
         self.config()
         self.netPass = self.fileManager.get_netpass()
-        self.certificateManager.generateContextTLS()
+        self.certificateManager.generate_context_tls()
         # run processes now
         self.run_processes()
 

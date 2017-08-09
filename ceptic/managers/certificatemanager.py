@@ -8,7 +8,7 @@ class CertificateManager(object):
     """
     SERVER = "__SERVER"
     CLIENT = "__CLIENT"
-    REQUESTER = None
+    REQUEST = None
     context = None
 
     def __init__(self, request, filemanager, certfile=None, keyfile=None, cafile=None):
@@ -25,15 +25,15 @@ class CertificateManager(object):
             self.SERVER: self.generate_context_server,
             self.CLIENT: self.generate_context_client
         }
-        self.assign_request_type(request)
+        self.generate_context_tls = self.assign_request_type(request)
         self.certfile = certfile
         self.keyfile = keyfile
         self.cafile = cafile
 
     def assign_request_type(self, request):
         if request in [self.SERVER, self.CLIENT]:
-            self.REQUESTER = request
-            self.generateContextTLS = self.REQUEST_MAP[self.REQUESTER]
+            self.REQUEST = request
+            return self.REQUEST_MAP[self.REQUEST]
         else:
             CertificateManagerException("requested manager type {} not valid".format(request))
 
@@ -43,10 +43,10 @@ class CertificateManager(object):
         :param socket: some pure socket
         :return: socket wrapped in SSL/TLS
         """
-        is_server_side = self.REQUESTER == self.SERVER
+        is_server_side = self.REQUEST == self.SERVER
         return self.context.wrap_socket(socket, server_side=is_server_side)
 
-    def generateContextTLS(self):
+    def generate_context_tls(self):
         pass
 
     def generate_context_client(self):
