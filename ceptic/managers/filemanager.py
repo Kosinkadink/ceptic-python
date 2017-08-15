@@ -6,7 +6,7 @@ class FileManager(object):
     Used to manage CEPtic implementation files
     """
 
-    def __init__(self, location):
+    def __init__(self, location, create_immediately=True):
         self.__location__ = location
         self.locations = {
             "root": self.__location__,
@@ -19,7 +19,8 @@ class FileManager(object):
             "networkpass": os.path.join(os.path.join(self.__location__, "resources"), "networkpass"),
             "certification": os.path.join(os.path.join(self.__location__, "resources"), "certification")
         }
-        self.create_directories()
+        if create_immediately:
+            self.create_directories()
 
     def create_directories(self):
         """

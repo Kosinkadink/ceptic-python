@@ -2,6 +2,7 @@ import os
 import ssl
 from ceptic.common import CepticException
 
+
 class CertificateManager(object):
     """
     Used to manage certificates for TLS in CEPtic implementations

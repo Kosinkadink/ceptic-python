@@ -1,5 +1,6 @@
 #!/usr/bin/python2
 
+import getopt
 import json
 import os
 import socket
@@ -7,6 +8,10 @@ import socket
 import ceptic.common as common
 from ceptic.common import CepticAbstraction
 from ceptic.managers.certificatemanager import CertificateManager
+
+
+def main(argv, templateClient, location):
+    templateClient(location, startTerminal=True)
 
 
 # sort of an abstract class; will not work on its own
