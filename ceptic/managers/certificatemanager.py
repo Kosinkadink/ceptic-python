@@ -47,37 +47,55 @@ class CertificateManager(object):
         is_server_side = self.REQUEST == self.SERVER
         return self.context.wrap_socket(socket, server_side=is_server_side)
 
-    def generate_context_tls(self):
+    def generate_context_tls(self, certfile=None, keyfile=None, cafile=None):
         pass
 
-    def generate_context_client(self):
+    def generate_context_client(self, certfile=None, keyfile=None, cafile=None):
         """
         Generate context for a client implementation
         :return: None
         """
+        # if files are provided in method, replace file locations
+        if certfile is not None:
+            self.certfile = certfile
+        if keyfile is not None:
+            self.keyfile = keyfile
+        if cafile is not None:
+            self.cafile = cafile
+        # add default cert locations if no file locations were ever provided
         if self.certfile is None:
             self.certfile = os.path.join(self.fileManager.get_directory("certification"), 'techtem_cert_client.pem')
         if self.keyfile is None:
             self.keyfile = os.path.join(self.fileManager.get_directory("certification"), 'techtem_client_key.pem')
         if self.cafile is None:
             self.cafile = os.path.join(self.fileManager.get_directory("certification"), 'techtem_cert_server.pem')
+        # create SSL/TLS context from provided files
         self.context = ssl.create_default_context()
         self.context.load_cert_chain(certfile=self.certfile,
                                      keyfile=self.keyfile)
         self.context.check_hostname = False
         self.context.load_verify_locations(cafile=self.cafile)
 
-    def generate_context_server(self):
+    def generate_context_server(self, certfile=None, keyfile=None, cafile=None):
         """
         Generate context for a server implementation
         :return: None
         """
+        # if files are provided in method, replace file locations
+        if certfile is not None:
+            self.certfile = certfile
+        if keyfile is not None:
+            self.keyfile = keyfile
+        if cafile is not None:
+            self.cafile = cafile
+        # add default cert locations if no file locations were ever provided
         if self.certfile is None:
             self.certfile = os.path.join(self.fileManager.get_directory("certification"), 'techtem_cert_server.pem')
         if self.keyfile is None:
             self.keyfile = os.path.join(self.fileManager.get_directory("certification"), 'techtem_server_key.pem')
         if self.cafile is None:
             self.cafile = os.path.join(self.fileManager.get_directory("certification"), 'techtem_cert_client.pem')
+        # create SSL/TLS context from provided files
         self.context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         self.context.load_cert_chain(certfile=self.certfile,
                                      keyfile=self.keyfile)
