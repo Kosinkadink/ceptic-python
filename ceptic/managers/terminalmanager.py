@@ -17,12 +17,11 @@ class TerminalManager(EndpointManager):
         """
         user_inp = inp.split()
         if not user_inp:
-            print("no inp")
+            print("no input given")
         if user_inp[0] not in self.endpointMap:
             raise TerminalManagerException("ERROR: terminal command {} is not recognized".format(user_inp[0]))
         return self.endpointMap[user_inp[0]](user_inp)
 
 
 class TerminalManagerException(CepticException):
-    def __init__(self, *args):
-        CepticException.__init__(self, *args)
+    pass

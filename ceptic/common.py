@@ -34,12 +34,14 @@ class CepticAbstraction(object):
         pass
 
     def service_terminal(self, inp):  # used for server commands
-        user_inp = inp.split()
-        if not user_inp:
-            pass
+        """
+        Pass input into terminalManager
+        :param inp: raw string input
+        :return: return value of whatever terminal command, or None
+        """
         try:
             # get command from terminal manager and run it with input
-            return self.terminalManager.get_command(user_inp[0])(user_inp)
+            return self.terminalManager.perform_input(inp)
         except TerminalManagerException, e:
             print str(e)
         except Exception, e:
@@ -135,8 +137,7 @@ class CepticException(Exception):
     """
     General Ceptic-related exception class
     """
-    def __init__(self, *args):
-        Exception.__init__(self, *args)
+    pass
 
 
 class SocketCeptic(object):
@@ -148,19 +149,33 @@ class SocketCeptic(object):
         self.s = s
 
     def send(self, msg):
+        """
+        Send message, prefixed by a 16-byte length
+        :param msg: string or bytes to send
+        :return: None
+        """
         total_size = '%16d' % len(msg)
         self.s.sendall(total_size + msg)
 
     def sendall(self, msg):
+        """
+        Send message, wrapper for SocketCeptic.send
+        :param msg: string or bytes to send
+        :return: None
+        """
         return self.send(msg)
 
-    def recv(self, bytes):
-        timeoutSec = 5
-
+    def recv(self, byte_amount):
+        """
+        Receive message, first the 16-byte length prefix, then the message of corresponding length. No more than the
+        specified amount of bytes will be received, but based on the received length less bytes could be received
+        :param byte_amount: integer
+        :return: received bytes, readable as a string
+        """
         size_to_recv = self.s.recv(16)
         size_to_recv = int(size_to_recv.strip())
 
-        amount = bytes
+        amount = byte_amount
         if size_to_recv < amount:
             amount = size_to_recv
         recvd = 0
@@ -173,10 +188,18 @@ class SocketCeptic(object):
                 break
         return text
 
-    def getSocket(self):
+    def get_socket(self):
+        """
+        Return raw socket instance
+        :return: basic socket instance (socket.socket)
+        """
         return self.s
 
     def close(self):
+        """
+        Close socket
+        :return: None
+        """
         self.s.close()
 
 
@@ -194,11 +217,11 @@ def select_ceptic(read_list, write_list, error_list, timeout):
     error_dict = {}
     # fill out dicts with socket:SocketCeptic pairs
     for sCep in read_list:
-        read_dict.setdefault(sCep.getSocket(), sCep)
+        read_dict.setdefault(sCep.get_socket(), sCep)
     for sCep in write_list:
-        write_dict.setdefault(sCep.getSocket(), sCep)
+        write_dict.setdefault(sCep.get_socket(), sCep)
     for sCep in error_list:
-        error_dict.setdefault(sCep.getSocket(), sCep)
+        error_dict.setdefault(sCep.get_socket(), sCep)
 
     ready_to_read, ready_to_write, in_error = select.select(read_dict.keys(), write_dict.keys(), error_dict.keys(),
                                                             timeout)
@@ -243,6 +266,11 @@ def parse_settings_file(location):
 
 
 def decode_unicode_hook(json_pairs):
+    """
+    Given json pairs, properly encode strings into utf-8 for general usage
+    :param json_pairs: dictionary of json key-value pairs
+    :return: new dictionary of json key-value pairs in utf-8
+    """
     new_json_pairs = []
     for key, value in json_pairs:
         if isinstance(value, unicode):

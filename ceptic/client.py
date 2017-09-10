@@ -10,8 +10,16 @@ from ceptic.common import CepticAbstraction
 from ceptic.managers.certificatemanager import CertificateManager
 
 
-def main(argv, templateClient, location):
-    templateClient(location, startTerminal=True)
+def main(argv, template_client, location, start_terminal=True):
+    """
+    Wrapper function for starting a ceptic client via terminal
+    :param argv: arguments from terminal input
+    :param template_client: ceptic client class
+    :param location: absolute directory to treat as location
+    :param start_terminal: boolean to determine if a user input loop should be started
+    :return: None
+    """
+    template_client(location, start_terminal=start_terminal)
 
 
 # sort of an abstract class; will not work on its own
@@ -25,9 +33,9 @@ class CepticClientTemplate(CepticAbstraction):
     # change this to default values
     varDict = dict(send_cache=409600, scriptname='template', version='3.0.0')
 
-    def __init__(self, location, startTerminal):
+    def __init__(self, location, start_terminal):
         CepticAbstraction.__init__(self, location)
-        self.startTerminal = startTerminal
+        self.startTerminal = start_terminal
         self.shouldExit = False
         # set up basic terminal commands
         self.terminalManager.add_command("exit", lambda data: self.exit())
@@ -43,6 +51,10 @@ class CepticClientTemplate(CepticAbstraction):
         self.initialize()
 
     def initialize(self):
+        """
+        Initialize client configuration and processes
+        :return: None
+        """
         # perform all tasks
         self.init_spec()
         self.netPass = self.fileManager.get_netpass()
@@ -50,11 +62,19 @@ class CepticClientTemplate(CepticAbstraction):
         self.run_processes()
 
     def run_processes(self):
+        """
+        Attempts to start terminal wrapper if variable startTerminal is true
+        :return: None
+        """
         if self.startTerminal:
             # now start terminal wrapper
-            self.terminalwrapper()
+            self.terminal_wrapper()
 
     def init_spec(self):
+        """
+        Initialize specific ceptic instance files
+        :return: None
+        """
         # add specific program parts directory to fileManager
         self.fileManager.add_directory("specificparts", self.varDict["scriptname"], base_key="programparts")
         self.fileManager.add_file("serverlistfile", "serverlist.txt", base_key="specificparts",
@@ -67,25 +87,39 @@ class CepticClientTemplate(CepticAbstraction):
         self.init_spec_extra()
 
     def init_spec_extra(self):
+        """
+        Function to overload for more specific initialization
+        :return: None
+        """
         pass
 
     def connect_with_null_dict(self, ip):
-        return self.connectip(ip, "None", "NULL", varDictToUse=self.nullVarDict)
+        return self.connect_ip(ip, "None", "NULL", varDictToUse=self.nullVarDict)
 
     def ping_terminal_command(self, ip):
-        return self.connectip(ip, None, "ping")
+        return self.connect_ip(ip, None, "ping")
 
-    def ping_endpoint(self, s, data=None, dataToStore=None):
+    def ping_endpoint(self, s, data=None, data_to_store=None):
         """
         Simple endpoint, sends pong to client
         :param s: SocketCeptic instance
-        :param data: additional data
+        :param data: additional data to deliver to the server
+        :param data_to_store: additional data to NOT send to server but keep for local reference
         :return: success state
         """
         received_msg = s.recv(4)
         return {"status": 200, "msg": received_msg}
 
-    def connectip(self, ip, data, command, dataToStore=None, varDictToUse=None):  # connect to ip
+    def connect_ip(self, ip, data, command, dataToStore=None, varDictToUse=None):  # connect to ip
+        """
+        Connect to ceptic server at given ip
+        :param ip: string ip:port address, written as XXX.XXX.XXX.XXX:XXXX
+        :param data: data to be inserted into json to send to server
+        :param command: name of command to perform for client-server
+        :param dataToStore: optional data to NOT send to the server but keep for local reference
+        :param varDictToUse: optional variable dictionary to use instead of default client varDict
+        :return: depends on data returned by command's function
+        """
         if not varDictToUse:
             varDictToUse = self.varDict
         try:
@@ -102,9 +136,18 @@ class CepticClientTemplate(CepticAbstraction):
             s.close()
             return "Server at " + ip + " not available\n"
         print("\nConnection successful to " + ip)
-        return self.connectprotocolclient(s, data, command, dataToStore, varDictToUse)
+        return self.connect_protocol_client(s, data, command, dataToStore, varDictToUse)
 
-    def connectprotocolclient(self, s, data, command, dataToStore, varDictToUse=varDict):
+    def connect_protocol_client(self, s, data, command, dataToStore, varDictToUse=varDict):
+        """
+        Perform general ceptic protocol handshake to continue connection
+        :param s: socket created in connect_ip (socket.socket)
+        :param data: data to be inserted into json to send to server
+        :param command: name of command to perform for client-server
+        :param dataToStore: data to NOT send to the server but keep for local reference
+        :param varDictToUse: optional variable dictionary to use instead of default client varDict
+        :return:
+        """
         # wrap socket with TLS, handshaking happens automatically
         s = self.certificateManager.wrap_socket(s)
         # wrap socket with SocketCeptic, to send length of message first
@@ -149,7 +192,11 @@ class CepticClientTemplate(CepticAbstraction):
         print("\nclear: clears screen")
         print("exit: closes program")
 
-    def terminalwrapper(self):
+    def terminal_wrapper(self):
+        """
+        Wrapper for client input, loops waiting for user input
+        :return: None
+        """
         self.boot()
         while not self.shouldExit:
             inp = raw_input(">")
@@ -158,8 +205,16 @@ class CepticClientTemplate(CepticAbstraction):
                 print returned
 
     def exit(self):
-        self.cleanProcesses()
+        """
+        Properly begin to exit server; sets shouldExit to True, performs clean_processes()
+        :return: None
+        """
+        self.clean_processes()
         self.shouldExit = True
 
-    def cleanProcesses(self):
+    def clean_processes(self):
+        """
+        Function to overload to perform cleaning before exit
+        :return: None
+        """
         pass
