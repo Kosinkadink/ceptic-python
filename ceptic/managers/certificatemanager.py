@@ -16,7 +16,7 @@ class CertificateManager(object):
         """
         Provide requester type and location directory
         :param request: string representing type (CertificateManager.SERVER or CertificateManager.CLIENT)
-        :param location: path of CEPtic implementation
+        :param filemanager: FileManager instance used by ceptic client/server
         :param certfile: path of certfile
         :param keyfile: path of keyfile
         :param cafile: path of cafile
