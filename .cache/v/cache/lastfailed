@@ -1,4 +1,3 @@
 {
-  "tests/client_test.py::TestClient": true, 
-  "tests/client_test.py::test_creation": true
+  "tests/client_test.py::TestClient": true
 }

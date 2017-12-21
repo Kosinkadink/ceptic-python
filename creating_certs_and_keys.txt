@@ -2,24 +2,24 @@ Use openssl to create server and client keys + certs.
 
 For the server key+cert, perform:
 
-openssl req -x509 -newkey rsa:4096 -keyout techtem_server_key.pem -out techtem_cert.pem -days 365 -nodes
+openssl req -x509 -newkey rsa:4096 -keyout techtem_key_server.pem -out techtem_cert_server.pem -days 365 -nodes
 
 For the client key+cert, perform:
 
-openssl req -x509 -newkey rsa:4096 -keyout techtem_client_key.pem -out techtem_cert_client.pem -days 365 -nodes
+openssl req -x509 -newkey rsa:4096 -keyout techtem_key_client.pem -out techtem_cert_client.pem -days 365 -nodes
 
 
 For servers and clients to work:
 Servers must have the following in their certification directory:
 
-	techtem_server_key.pem
-	techtem_cert.pem
+	techtem_key_server.pem
+	techtem_cert_server.pem
 	techtem_cert_client.pem
 
 Clients must have the following in their certification directory:
 
-	techtem_cert.pem
-	techtem_client_key.pem
+	techtem_cert_server.pem
+	techtem_key_client.pem
 	techtem_cert_client.pem
 
 Do not include server's key in clients, and try to avoid including

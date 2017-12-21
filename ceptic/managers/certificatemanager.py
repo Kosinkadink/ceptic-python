@@ -66,7 +66,7 @@ class CertificateManager(object):
         if self.certfile is None:
             self.certfile = os.path.join(self.fileManager.get_directory("certification"), 'techtem_cert_client.pem')
         if self.keyfile is None:
-            self.keyfile = os.path.join(self.fileManager.get_directory("certification"), 'techtem_client_key.pem')
+            self.keyfile = os.path.join(self.fileManager.get_directory("certification"), 'techtem_key_client.pem')
         if self.cafile is None:
             self.cafile = os.path.join(self.fileManager.get_directory("certification"), 'techtem_cert_server.pem')
         # create SSL/TLS context from provided files
@@ -92,7 +92,7 @@ class CertificateManager(object):
         if self.certfile is None:
             self.certfile = os.path.join(self.fileManager.get_directory("certification"), 'techtem_cert_server.pem')
         if self.keyfile is None:
-            self.keyfile = os.path.join(self.fileManager.get_directory("certification"), 'techtem_server_key.pem')
+            self.keyfile = os.path.join(self.fileManager.get_directory("certification"), 'techtem_key_server.pem')
         if self.cafile is None:
             self.cafile = os.path.join(self.fileManager.get_directory("certification"), 'techtem_cert_client.pem')
         # create SSL/TLS context from provided files

@@ -4,7 +4,7 @@ add_surrounding_dir_to_path()
 
 from ceptic.client import CepticClientTemplate, main
 from ceptic.common import normalize_path
-from shutil import rmtree
+from shutil import rmtree, copytree
 from time import sleep
 import sys
 import os
@@ -26,7 +26,34 @@ class ExampleClient(CepticClientTemplate):
 def test_creation():
 
 	client = ExampleClient(location=test_location,start_terminal=False)
-
+	# list of directories that should exist
+	directories = [
+		"resources",
+		"resources/protocols",
+		"resources/cache",
+		"resources/programparts",
+		"resources/uploads",
+		"resources/downloads",
+		"resources/networkpass",
+		"resources/certification"
+	]
+	# list of files that should exist
+	files = [
+		"resources/certification/techtem_cert_client.pem",
+		"resources/certification/techtem_cert_server.pem",
+		"resources/certification/techtem_key_client.pem",
+		"resources/certification/techtem_key_server.pem"
+	]
+	# check if directories exist
+	for directory in directories:
+		fullpath = os.path.join(test_location,directory)
+		print fullpath
+		assert os.path.isdir(fullpath)
+	# check if files exist
+	for file in files:
+		fullpath = os.path.join(test_location,file)
+		print fullpath
+		assert os.path.isfile(fullpath)
 
 # END TESTS
 
@@ -39,11 +66,13 @@ def setup_module(module):
 	module.test_dir = os.path.join(os.path.realpath(
 		os.path.join(os.getcwd(), os.path.dirname(__file__))))
 	module.test_location = os.path.join(module.test_dir,testfiles_name)
-	# create directory
-	os.mkdir(module.test_location)
+	resource_dir = os.path.join(module.test_location,"resources")
+	actual_certification_dir = os.path.join(resource_dir, "certification")
+	archive_certification_dir = os.path.join(module.test_dir,"certification")
+	copytree(archive_certification_dir,actual_certification_dir)
 
 def teardown_module(module):
-	# remove test_location
+	# remove everything BUT the resources/certification directory
 	rmtree(module.test_location)
 
 # done setting up objects for this module
