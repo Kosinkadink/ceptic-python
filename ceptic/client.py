@@ -135,7 +135,7 @@ class CepticClientTemplate(CepticAbstraction):
         s.settimeout(5)
         try:
             s.connect((host, port))
-        except Exception, e:
+        except Exception as e:
             print("closing connection: {}".format(str(e)))
             s.close()
             return "Server at " + ip + " not available\n"
@@ -177,13 +177,13 @@ class CepticClientTemplate(CepticAbstraction):
         # determine if good to go
         if conn_resp["status"] != 200:
             s.close()
-            print "failure. closing connection: {0}:{1}:{2},{3},{4}".format(conn_resp["status"], conn_resp["msg"],
+            print("failure. closing connection: {0}:{1}:{2},{3},{4}".format(conn_resp["status"], conn_resp["msg"],
                                                                             conn_resp["downloadAddrIp"],
                                                                             conn_resp["downloadAddrLoc"],
-                                                                            conn_resp["errors"])
+                                                                            conn_resp["errors"]))
             return conn_resp
         else:
-            print "success. continuing..."
+            print("success. continuing...")
             return command_function(s, data, dataToStore)
 
     def boot(self):
@@ -206,7 +206,7 @@ class CepticClientTemplate(CepticAbstraction):
             inp = raw_input(">")
             returned = self.service_terminal(inp)
             if returned is not None:
-                print returned
+                print(returned)
 
     def exit(self):
         """

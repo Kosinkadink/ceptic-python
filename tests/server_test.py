@@ -53,22 +53,22 @@ def test_creation():
 	# check if directories exist
 	for directory in directories:
 		fullpath = os.path.join(test_creation.test_location,directory)
-		print fullpath
+		print(fullpath)
 		assert os.path.isdir(fullpath)
 	# check if directories DON'T exist
 	for directory in not_directories:
 		fullpath = os.path.join(test_creation.test_location,directory)
-		print fullpath
+		print(fullpath)
 		assert not os.path.isdir(fullpath)
 	# check if files exist
 	for file in files:
 		fullpath = os.path.join(test_creation.test_location,file)
-		print fullpath
+		print(fullpath)
 		assert os.path.isfile(fullpath)
 	# check if files DON'T exist
 	for file in not_files:
 		fullpath = os.path.join(test_creation.test_location,file)
-		print fullpath
+		print(fullpath)
 		assert not os.path.isfile(fullpath)
 
 # END TESTS

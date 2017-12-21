@@ -120,7 +120,7 @@ class CepticServerTemplate(CepticAbstraction):
         try:
             self.start_user_input()
             self.run_server()
-        except Exception, e:
+        except Exception as e:
             print(str(e))
             self.shouldExit = True
 
@@ -152,7 +152,7 @@ class CepticServerTemplate(CepticAbstraction):
                 try:
                     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                     s.connect(('localhost', admin_port))
-                except Exception, e:
+                except Exception as e:
                     error = e
                     tries += 1
                 else:
@@ -269,7 +269,7 @@ class CepticServerTemplate(CepticAbstraction):
         try:
             serversocket.bind((host, port))
             userinput.bind((host, userport))
-        except Exception, e:
+        except Exception as e:
             print(str(e))
             self.shouldExit = True
 
@@ -336,7 +336,7 @@ class CepticServerTemplate(CepticAbstraction):
             responses.setdefault("errors", []).append("invalid version")
         try:
             command_function = self.endpointManager.get_command(conn_req["command"])
-        except KeyError, e:
+        except KeyError as e:
             ready_to_go = False
             responses.setdefault("errors", []).append("command not recognized: %s" % conn_req["command"])
         finally:

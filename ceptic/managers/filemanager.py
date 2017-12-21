@@ -81,7 +81,7 @@ class FileManager(object):
                 location = os.path.join(self.locations["resources"], location)
         # try to create empty file if doesn't exist
         if not os.path.exists(location):
-            with open(location, "wb") as seeds:
+            with open(location, "w") as seeds:
                 seeds.write(text)
         # add it to dictionary
         self.locations[key] = location

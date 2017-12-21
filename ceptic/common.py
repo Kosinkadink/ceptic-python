@@ -42,10 +42,10 @@ class CepticAbstraction(object):
         try:
             # get command from terminal manager and run it with input
             return self.terminalManager.perform_input(inp)
-        except TerminalManagerException, e:
-            print str(e)
-        except Exception, e:
-            print str(e)
+        except TerminalManagerException as e:
+            print(str(e))
+        except Exception as e:
+            print(str(e))
 
     def recv_file(self, s, file_path, file_name, send_cache):
         """
@@ -282,4 +282,4 @@ def decode_unicode_hook(json_pairs):
 
 
 import ceptic.managers as managers
-from managers.terminalmanager import TerminalManagerException
+from ceptic.managers.terminalmanager import TerminalManagerException

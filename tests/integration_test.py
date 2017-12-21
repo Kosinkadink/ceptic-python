@@ -25,7 +25,7 @@ def setup_function(function):
 	resource_serverdir = os.path.join(function.test_serverlocation,"resources")
 	function.actual_certification_clientdir = os.path.join(resource_clientdir, "certification")
 	function.actual_certification_serverdir = os.path.join(resource_serverdir, "certification")
-	function.archive_client_certification_dir = os.path.join(function.test_dir,"server_certs/certification")
+	function.archive_client_certification_dir = os.path.join(function.test_dir,"client_certs/certification")
 	function.archive_server_certification_dir = os.path.join(function.test_dir,"server_certs/certification")
 	copytree(function.archive_certification_dir,function.actual_certification_dir)
 

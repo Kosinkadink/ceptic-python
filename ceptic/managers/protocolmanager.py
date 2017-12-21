@@ -80,7 +80,7 @@ class ProtocolManager(object):
             sys.path.insert(0, directory)
             try:
                 module_imported = __import__(module_name)  # cool import command
-            except Exception, e:
+            except Exception as e:
                 raise e
             else:
                 self.add_protocol(module_name, module_imported)

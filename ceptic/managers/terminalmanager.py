@@ -1,4 +1,4 @@
-from endpointmanager import EndpointManager
+from ceptic.managers.endpointmanager import EndpointManager
 from ceptic.common import CepticException
 
 
