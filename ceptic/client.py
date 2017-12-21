@@ -33,7 +33,7 @@ class CepticClientTemplate(CepticAbstraction):
     # change this to default values
     varDict = dict(send_cache=409600, scriptname='template', version='3.0.0')
 
-    def __init__(self, location, start_terminal, name='template', version='1.0.0'):
+    def __init__(self, location=os.getcwd(), start_terminal=True, name='template', version='1.0.0'):
         # set varDict arguments
         self.varDict["scriptname"] = name
         self.varDict["version"] = version

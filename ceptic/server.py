@@ -40,7 +40,7 @@ def main(argv, template_server, location):
                 start_raw_input = False
 
     # start filling in key word dictionary
-    kwargs["start_user_terminal"] = start_raw_input
+    kwargs["start_terminal"] = start_raw_input
 
     if server_port_string is not None:
         try:
@@ -75,14 +75,17 @@ class CepticServerTemplate(CepticAbstraction):
                    scriptname="template", downloadAddrIp='jedkos.com:9011',
                    downloadAddrLoc='protocols/template.py')
 
-    def __init__(self, location, server=varDict["serverport"], user=varDict["userport"], start_user_terminal=True):
+    def __init__(self, location=os.getcwd(), server=varDict["serverport"], user=varDict["userport"], start_terminal=True, name="template", version="1.0.0"):
+        # set varDict arguments
+        self.varDict["scriptname"] = name
+        self.varDict["version"] = version
         if server is not None:
             self.persistVariablesInDict["serverport"] = int(server)
         if user is not None:
             self.persistVariablesInDict["userport"] = int(user)
         CepticAbstraction.__init__(self, location)
         self.__location__ = location
-        self.startUser = start_user_terminal
+        self.startUser = start_terminal
         self.shouldExit = False
         # set up basic terminal commands
         self.terminalManager.add_command("exit", lambda data: self.exit())
