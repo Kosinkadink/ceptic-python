@@ -1,0 +1,34 @@
+Use openssl to create server and client keys + certs.
+
+For the server key+cert, perform:
+
+openssl req -x509 -newkey rsa:4096 -keyout techtem_server_key.pem -out techtem_cert.pem -days 365 -nodes
+
+For the client key+cert, perform:
+
+openssl req -x509 -newkey rsa:4096 -keyout techtem_client_key.pem -out techtem_cert_client.pem -days 365 -nodes
+
+
+For servers and clients to work:
+Servers must have the following in their certification directory:
+
+	techtem_server_key.pem
+	techtem_cert.pem
+	techtem_cert_client.pem
+
+Clients must have the following in their certification directory:
+
+	techtem_cert.pem
+	techtem_client_key.pem
+	techtem_cert_client.pem
+
+Do not include server's key in clients, and try to avoid including
+the clients' keys in servers.
+
+
+The meanings of some values of the openssl commands:
+	- rsa:4096 is the size of the key in bits. Feel free to make it
+	  smaller (ie 2048), but it's less cool
+	- 365 specifies how long the certificate will be valid for.
+	  Replace it after it expires though.
+
