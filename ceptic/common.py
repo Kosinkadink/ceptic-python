@@ -3,6 +3,7 @@
 import os
 import select
 import sys
+from sys import version_info
 
 # NOTE: "import ceptic.managers as managers" is found on bottom of file to work around circular import
 
@@ -273,10 +274,11 @@ def decode_unicode_hook(json_pairs):
     """
     new_json_pairs = []
     for key, value in json_pairs:
-        if isinstance(value, unicode):
-            value = value.encode("utf-8")
-        if isinstance(key, unicode):
-            key = key.encode("utf-8")
+        if version_info < (3,0): # is 2.X
+            if isinstance(value, unicode):
+                value = value.encode("utf-8")
+            if isinstance(key, unicode):
+                key = key.encode("utf-8")
         new_json_pairs.append((key, value))
     return dict(new_json_pairs)
 
