@@ -5,6 +5,7 @@ import json
 import os
 import socket
 
+from sys import version_info
 import ceptic.common as common
 from ceptic.common import CepticAbstraction
 from ceptic.managers.certificatemanager import CertificateManager

@@ -8,7 +8,7 @@ class StreamManagerException(CepticException):
     """
     Stream-related exception, inherits from CepticException
     """
-    def __init(self, *args):
+    def __init__(self, *args):
         CepticException.__init__(self, *args)
 
 

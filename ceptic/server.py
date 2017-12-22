@@ -7,6 +7,7 @@ import select
 import socket
 import threading
 
+from sys import version_info
 import ceptic.common as common
 from ceptic.common import CepticAbstraction
 from ceptic.managers.certificatemanager import CertificateManager
@@ -75,7 +76,7 @@ class CepticServerTemplate(CepticAbstraction):
                    scriptname="template", downloadAddrIp='jedkos.com:9011',
                    downloadAddrLoc='protocols/template.py')
 
-    def __init__(self, location=os.getcwd(), server=varDict["serverport"], user=varDict["userport"], start_terminal=True, name="template", version="1.0.0"):
+    def __init__(self, location=os.getcwd(), server=varDict["serverport"], user=varDict["userport"], start_terminal=True, name="template", version="1.0.0", block_on_start=True):
         # set varDict arguments
         self.varDict["scriptname"] = name
         self.varDict["version"] = version
@@ -86,6 +87,7 @@ class CepticServerTemplate(CepticAbstraction):
         CepticAbstraction.__init__(self, location)
         self.__location__ = location
         self.startUser = start_terminal
+        self.blockOnStart = block_on_start
         self.shouldExit = False
         # set up basic terminal commands
         self.terminalManager.add_command("exit", lambda data: self.exit())
@@ -119,7 +121,7 @@ class CepticServerTemplate(CepticAbstraction):
         """
         try:
             self.start_user_input()
-            self.run_server()
+            self.start_server()
         except Exception as e:
             print(str(e))
             self.shouldExit = True
@@ -134,6 +136,14 @@ class CepticServerTemplate(CepticAbstraction):
             raw_input_thread.daemon = True
             raw_input_thread.start()
             print("user input thread started - port {}".format(self.varDict["userport"]))
+
+    def start_server(self):
+        if self.blockOnStart:
+            self.run_server()
+        else:
+            server_thread = threading.Thread(target=self.run_server)
+            server_thread.daemon=True
+            server_thread.start()
 
     def socket_raw_input(self, admin_port):
         """
@@ -187,7 +197,10 @@ class CepticServerTemplate(CepticAbstraction):
         # if config file does not exist, create your own
         if not os.path.exists(os.path.join(self.fileManager.get_directory("specificparts"), "config.json")):
             with open(os.path.join(self.fileManager.get_directory("specificparts"), "config.json"), "wb") as json_file:
-                json_file.write(json.dumps(self.varDict))
+                if version_info < (3,0): # is 2.X
+                    json_file.write(json.dumps(self.varDict))
+                else:
+                    json_file.write(bytes(json.dumps(self.varDict),'utf-8'))
         # otherwise, read in values from config file
         else:
             with open(os.path.join(self.fileManager.get_directory("specificparts"), "config.json"), "rb") as json_file:
@@ -298,9 +311,15 @@ class CepticServerTemplate(CepticAbstraction):
                     newthread.daemon = True
                     newthread.start()
 
-        userinput.shutdown(socket.SHUT_RDWR)
+        try:
+            userinput.shutdown(socket.SHUT_RDWR)
+        except IOError as e:
+            print(str(e))
         userinput.close()
-        serversocket.shutdown(socket.SHUT_RDWR)
+        try:
+            serversocket.shutdown(socket.SHUT_RDWR)
+        except IOError as e:
+            print(str(e))
         serversocket.close()
         self.exit()
 

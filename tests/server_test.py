@@ -2,6 +2,7 @@ from testingfixtures import add_surrounding_dir_to_path
 # add surrounding dir to path to enable importing
 add_surrounding_dir_to_path()
 
+from threading import Thread
 from ceptic.server import CepticServerTemplate, main
 from ceptic.common import normalize_path
 from shutil import rmtree, copytree
@@ -12,10 +13,10 @@ import os
 
 class ExampleServer(CepticServerTemplate):
 
-	def __init__(self, location, start_terminal=True):
+	def __init__(self, location, start_terminal=True, block_on_start=False):
 		name = "test"
 		version = "3.0.0"
-		CepticServerTemplate.__init__(self, location, start_terminal, name=name, version=version)
+		CepticServerTemplate.__init__(self, location, start_terminal=start_terminal, server=9999, name=name, version=version, block_on_start=block_on_start)
 
 	def add_terminal_commands(self):
 		self.terminalManager.add_command("ping", lambda data: self.ping_terminal_command(data[1]))
@@ -25,7 +26,8 @@ class ExampleServer(CepticServerTemplate):
 
 def test_creation():
 
-	client = ExampleServer(location=test_creation.test_location,start_terminal=False)
+	server = ExampleServer(location=test_creation.test_location,start_terminal=False)
+	server.start()
 	# list of directories that should exist
 	directories = [
 		"resources",
