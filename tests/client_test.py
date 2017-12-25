@@ -3,11 +3,13 @@ from testingfixtures import add_surrounding_dir_to_path
 add_surrounding_dir_to_path()
 
 from ceptic.client import CepticClientTemplate, main
-from ceptic.common import normalize_path
+from ceptic.common import normalize_path, decode_unicode_hook
 from shutil import rmtree, copytree
 from time import sleep
+from hashlib import sha1
 import sys
 import os
+import json
 
 
 class ExampleClient(CepticClientTemplate):
@@ -20,14 +22,26 @@ class ExampleClient(CepticClientTemplate):
 	def add_terminal_commands(self):
 		self.terminalManager.add_command("ping", lambda data: self.ping_terminal_command(data[1]))
 
-	def send_file_command(self, filename):
-		pass
+	def add_endpoint_commands(self):
+		self.endpointManager.add_command("send", self.send_file_endpoint)
 
-	def recv_file_command(self, filename):
-		pass
+	def send_file_command(self, ip, filename):
+		return self.connect_ip(ip, {"filename": filename}, "send")
+
+	def recv_file_command(self, ip, filename):
+		return self.connect_ip(ip, {"filename": filename}, "recv")
 
 	def send_file_endpoint(self, s, data=None, data_to_store=None):
-		pass
+		# send file
+		file_name = data["filename"]
+		file_path = os.path.join(self.fileManager.get_directory("uploads"),file_name)
+		try:
+			self.send_file(s, file_path, file_name)
+			print("CLIENT: {}".format(type(s)))
+			return_data = json.loads(s.recv(128),object_pairs_hook=decode_unicode_hook)
+		except IOError as e:
+			return_data = {"status": 444, "msg": "IOError here: {}".format(str(e))}
+		return return_data
 
 	def recv_file_endpoint(self, s, data=None, data_to_store=None):
 		pass

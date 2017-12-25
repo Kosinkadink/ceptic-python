@@ -7,6 +7,8 @@ from ceptic.server import CepticServerTemplate, main
 from ceptic.common import normalize_path
 from shutil import rmtree, copytree
 from time import sleep
+from hashlib import sha1
+import json
 import sys
 import os
 
@@ -21,10 +23,22 @@ class ExampleServer(CepticServerTemplate):
 	def add_terminal_commands(self):
 		self.terminalManager.add_command("ping", lambda data: self.ping_terminal_command(data[1]))
 
-	def send_file_request_command(self, filename):
-		pass
+	def add_endpoint_commands(self):
+		self.endpointManager.add_command("send", self.send_file_request_endpoint)
 
-	def recv_file_request_command(self, filename):
+	def send_file_request_endpoint(self, s, data=None):
+		file_name = data["filename"]
+		file_path = os.path.join(self.fileManager.get_directory("downloads"),file_name)
+		try:
+			return_data = json.dumps(self.recv_file(s, file_path, file_name))
+		except IOError:
+			return_data = json.dumps({"status": 400, "msg": "IOError occurred"})
+		print("SERVER: {}".format(type(s)))
+		print("SERVER: {}".format(return_data))
+		s.sendall(return_data)
+		return return_data
+
+	def recv_file_request_endpoint(self, s, data=None):
 		pass
 
 # TESTS:

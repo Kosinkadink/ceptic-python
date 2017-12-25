@@ -14,23 +14,25 @@ import os
 
 def test_pinging():
 	client = ExampleClient(location=test_pinging.test_clientlocation,start_terminal=False)
-	server = ExampleServer(location=test_pinging.test_serverlocation,start_terminal=False,block_on_start=False)
-	server.start()
+	test_pinging.server.start()
 	# attempt to ping
 	attempt = client.ping_terminal_command("localhost:9999")
 	print(attempt)
 	# check if response is valid
+
 	assert isinstance(attempt,dict)
 	assert attempt["status"] == 200
 	assert attempt["msg"] == "pong"
 
-@pytest.mark.skip(reason="not written yet")
+#@pytest.mark.skip(reason="not written yet")
 def test_file_transfer():
-	client = ExampleClient(location=test_pinging.test_clientlocation,start_terminal=False)
-	server = ExampleServer(location=test_pinging.test_serverlocation,start_terminal=False,block_on_start=False)
-	server.start()
+	client = ExampleClient(location=test_file_transfer.test_clientlocation,start_terminal=False)
+	test_file_transfer.server.start()
 	# attempt to send file
-
+	attempt = client.send_file_command("localhost:9999","test_file.txt")
+	print(attempt)
+	# check if response is valid
+	assert attempt["status"] == 200
 
 # set up for each function
 def setup_function(function):
@@ -46,6 +48,10 @@ def setup_function(function):
 	function.actual_certification_serverdir = os.path.join(resource_serverdir, "certification")
 	function.archive_client_certification_dir = os.path.join(function.test_dir,"client_certs/certification")
 	function.archive_server_certification_dir = os.path.join(function.test_dir,"server_certs/certification")
+	function.actual_uploads_clientdir = os.path.join(resource_clientdir, "uploads")
+	function.actual_uploads_serverdir = os.path.join(resource_serverdir, "uploads")
+	function.archive_uploads_clientdir = os.path.join(function.test_dir,"client_certs/uploads")
+	function.archive_uploads_serverdir = os.path.join(function.test_dir,"server_certs/uploads")
 	try:
 		copytree(function.archive_client_certification_dir,function.actual_certification_clientdir)
 	except WindowsError: # already exists
@@ -54,11 +60,27 @@ def setup_function(function):
 		copytree(function.archive_server_certification_dir,function.actual_certification_serverdir)
 	except WindowsError: # already exists
 		pass
+	try:
+		copytree(function.archive_uploads_clientdir,function.actual_uploads_clientdir)
+	except WindowsError: # already exists
+		pass
+	try:
+		copytree(function.archive_uploads_serverdir,function.actual_uploads_serverdir)
+	except WindowsError: # already exists
+		pass
+	# setup server
+	function.server = ExampleServer(location=test_pinging.test_serverlocation,start_terminal=False,block_on_start=False)
 
 def teardown_function(function):
-	# remove everything BUT the resources/certification directory
+	# remove everything
 	rmtree(function.test_clientlocation)
 	rmtree(function.test_serverlocation)
+	# stop the server, if exists
+	try:
+		function.server.exit()
+		sleep(0.25)
+	except Exception as e:
+		print(str(e))
 
 # done setting up objects for each module
 
