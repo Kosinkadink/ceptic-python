@@ -145,38 +145,38 @@ class CepticAbstraction(object):
         :param send_cache: amount of bytes to attempt to send at a time
         :return: status of upload (success: 200, failure: 400)
         """
-        #try:
-        # get size of file to be sent
-        file_length = os.path.getsize(file_path)
-        # send size of file
-        s.sendall("%16d" % file_length)
-        # open file and send it
-        with open(file_path, 'rb') as f:
-            print("{} sending...".format(file_name))
-            sent = 0
-            while file_length > sent:
-                # print progress of upload, ignore if cannot display
-                try:
-                    sys.stdout.write(
-                        str((float(sent) / file_length) * 100)[:4] + '%   ' + str(sent) + '/' + str(
-                            file_length) + ' B\r')
-                    sys.stdout.flush()
-                except:
-                    pass
-                data = f.read(send_cache)
-                s.sendall(data)
-                if not data:
-                    break
-                sent += len(data)
-        # get heartbeat
-        s.recv(2)
-        sys.stdout.write('100.0%   ' + str(sent) + '/' + str(file_length) + ' B\n')
-        print("{} sending successful".format(file_name))
-        # return metadata
-        return {"status": 200, "msg": "OK"}
-        #except Exception as e:
-        #    print("ERROR has occured while sending file")
-        #    return {"status": 400, "msg": "{}".format(str(e))}
+        try:
+            # get size of file to be sent
+            file_length = os.path.getsize(file_path)
+            # send size of file
+            s.sendall("%16d" % file_length)
+            # open file and send it
+            with open(file_path, 'rb') as f:
+                print("{} sending...".format(file_name))
+                sent = 0
+                while file_length > sent:
+                    # print progress of upload, ignore if cannot display
+                    try:
+                        sys.stdout.write(
+                            str((float(sent) / file_length) * 100)[:4] + '%   ' + str(sent) + '/' + str(
+                                file_length) + ' B\r')
+                        sys.stdout.flush()
+                    except:
+                        pass
+                    data = f.read(send_cache)
+                    s.sendall(data)
+                    if not data:
+                        break
+                    sent += len(data)
+            # get heartbeat
+            s.recv(2)
+            sys.stdout.write('100.0%   ' + str(sent) + '/' + str(file_length) + ' B\n')
+            print("{} sending successful".format(file_name))
+            # return metadata
+            return {"status": 200, "msg": "OK"}
+        except Exception as e:
+            print("ERROR has occured while sending file")
+            return {"status": 400, "msg": "{}".format(str(e))}
 
     def clear(self):
         """
