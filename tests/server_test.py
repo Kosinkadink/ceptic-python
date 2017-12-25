@@ -25,6 +25,7 @@ class ExampleServer(CepticServerTemplate):
 
 	def add_endpoint_commands(self):
 		self.endpointManager.add_command("send", self.send_file_request_endpoint)
+		self.endpointManager.add_command("recv", self.recv_file_request_endpoint)
 
 	def send_file_request_endpoint(self, s, data=None):
 		file_name = data["filename"]
@@ -39,7 +40,16 @@ class ExampleServer(CepticServerTemplate):
 		return return_data
 
 	def recv_file_request_endpoint(self, s, data=None):
-		pass
+		file_name = data["filename"]
+		file_path = os.path.join(self.fileManager.get_directory("uploads"),file_name)
+		try:
+			return_data = json.dumps(self.send_file(s, file_path, file_name))
+		except IOError:
+			return_data = json.dumps({"status": 400, "msg": "IOError occurred"})
+		print("SERVER: {}".format(type(s)))
+		print("SERVER: {}".format(return_data))
+		s.sendall(return_data)
+		return return_data
 
 # TESTS:
 

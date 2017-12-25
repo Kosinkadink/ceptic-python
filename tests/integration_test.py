@@ -24,15 +24,42 @@ def test_pinging():
 	assert attempt["status"] == 200
 	assert attempt["msg"] == "pong"
 
-#@pytest.mark.skip(reason="not written yet")
-def test_file_transfer():
-	client = ExampleClient(location=test_file_transfer.test_clientlocation,start_terminal=False)
-	test_file_transfer.server.start()
+def test_file_transfer_send():
+	client = ExampleClient(location=test_file_transfer_send.test_clientlocation,start_terminal=False)
+	test_file_transfer_send.server.start()
 	# attempt to send file
 	attempt = client.send_file_command("localhost:9999","test_file.txt")
 	print(attempt)
 	# check if response is valid
 	assert attempt["status"] == 200
+
+#@pytest.mark.skip(reason="not written yet")
+def test_file_transfer_send_does_not_exist():
+	client = ExampleClient(location=test_file_transfer_send_does_not_exist.test_clientlocation,start_terminal=False)
+	test_file_transfer_send_does_not_exist.server.start()
+	# attempt to send file
+	attempt = client.send_file_command("localhost:9999","not_found.txt")
+	print(attempt)
+	# check if response is valid
+	assert attempt["status"] == 400
+
+def test_file_transfer_recv():
+	client = ExampleClient(location=test_file_transfer_recv.test_clientlocation,start_terminal=False)
+	test_file_transfer_recv.server.start()
+	# attempt to send file
+	attempt = client.recv_file_command("localhost:9999","test_file.txt")
+	print(attempt)
+	# check if response is valid
+	assert attempt["status"] == 200
+
+def test_file_transfer_recv_does_not_exist():
+	client = ExampleClient(location=test_file_transfer_recv_does_not_exist.test_clientlocation,start_terminal=False)
+	test_file_transfer_recv_does_not_exist.server.start()
+	# attempt to send file
+	attempt = client.recv_file_command("localhost:9999","not_found.txt")
+	print(attempt)
+	# check if response is valid
+	assert attempt["status"] == 400
 
 # set up for each function
 def setup_function(function):

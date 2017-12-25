@@ -64,7 +64,8 @@ class CepticAbstraction(object):
         try:
             # get size of file
             received_string = s.recv(16).strip()
-            #file_length = int(s.recv(16).strip())
+            if received_string == "n"*16:
+                raise IOError("No file found ({}) on sender side".format(file_name))
             file_length = int(received_string)
             with open(file_path, 'wb') as f:
                 print("{} receiving...".format(file_name))
@@ -106,7 +107,8 @@ class CepticAbstraction(object):
         try:
             # get size of file
             received_string = s.recv(16).strip()
-            #file_length = int(s.recv(16).strip())
+            if received_string == "n"*16:
+                raise IOError("No file found ({}) on sender side".format(file_name))
             file_length = int(received_string)
             with open(file_path, 'wb') as f:
                 print("{} receiving...".format(file_name))
@@ -146,11 +148,15 @@ class CepticAbstraction(object):
         :return: status of upload (success: 200, failure: 400)
         """
         try:
-            # get size of file to be sent
+            # check if file exists, and if not send file length as all "n"
+            if not os.path.isfile(file_path):
+                s.sendall("n"*16)
+                raise IOError("No file found at {}".format(file_path))
             file_length = os.path.getsize(file_path)
             # send size of file
             s.sendall("%16d" % file_length)
             # open file and send it
+            print(file_path)
             with open(file_path, 'rb') as f:
                 print("{} sending...".format(file_name))
                 sent = 0

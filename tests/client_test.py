@@ -24,6 +24,7 @@ class ExampleClient(CepticClientTemplate):
 
 	def add_endpoint_commands(self):
 		self.endpointManager.add_command("send", self.send_file_endpoint)
+		self.endpointManager.add_command("recv", self.recv_file_endpoint)
 
 	def send_file_command(self, ip, filename):
 		return self.connect_ip(ip, {"filename": filename}, "send")
@@ -36,15 +37,30 @@ class ExampleClient(CepticClientTemplate):
 		file_name = data["filename"]
 		file_path = os.path.join(self.fileManager.get_directory("uploads"),file_name)
 		try:
-			self.send_file(s, file_path, file_name)
+			success_data = self.send_file(s, file_path, file_name)
 			print("CLIENT: {}".format(type(s)))
-			return_data = json.loads(s.recv(128),object_pairs_hook=decode_unicode_hook)
+			if success_data["status"] != 200:
+				return_data = success_data
+			else:
+				return_data = json.loads(s.recv(128),object_pairs_hook=decode_unicode_hook)
 		except IOError as e:
 			return_data = {"status": 444, "msg": "IOError here: {}".format(str(e))}
 		return return_data
 
 	def recv_file_endpoint(self, s, data=None, data_to_store=None):
-		pass
+		# send file
+		file_name = data["filename"]
+		file_path = os.path.join(self.fileManager.get_directory("downloads"),file_name)
+		try:
+			success_data = self.recv_file(s, file_path, file_name)
+			print("CLIENT: {}".format(type(s)))
+			if success_data["status"] != 200:
+				return_data = success_data
+			else:
+				return_data = json.loads(s.recv(128),object_pairs_hook=decode_unicode_hook)
+		except IOError as e:
+			return_data = {"status": 444, "msg": "IOError here: {}".format(str(e))}
+		return return_data
 
 # TESTS:
 
