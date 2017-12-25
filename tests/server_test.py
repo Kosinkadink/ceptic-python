@@ -21,6 +21,11 @@ class ExampleServer(CepticServerTemplate):
 	def add_terminal_commands(self):
 		self.terminalManager.add_command("ping", lambda data: self.ping_terminal_command(data[1]))
 
+	def send_file_request_command(self, filename):
+		pass
+
+	def recv_file_request_command(self, filename):
+		pass
 
 # TESTS:
 

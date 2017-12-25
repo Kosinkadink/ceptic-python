@@ -7,6 +7,7 @@ from server_test import ExampleServer
 from ceptic.common import normalize_path
 from shutil import rmtree, copytree
 from time import sleep
+import pytest
 import sys
 import os
 
@@ -22,6 +23,13 @@ def test_pinging():
 	assert isinstance(attempt,dict)
 	assert attempt["status"] == 200
 	assert attempt["msg"] == "pong"
+
+@pytest.mark.skip(reason="not written yet")
+def test_file_transfer():
+	client = ExampleClient(location=test_pinging.test_clientlocation,start_terminal=False)
+	server = ExampleServer(location=test_pinging.test_serverlocation,start_terminal=False,block_on_start=False)
+	server.start()
+	# attempt to send file
 
 
 # set up for each function

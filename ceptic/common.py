@@ -142,6 +142,20 @@ class CepticException(Exception):
 
 
 class SocketCeptic(object):
+    def __init__(self,  s):
+        pass
+    def __new__(self_class, s):
+        if version_info < (3,0): # python2 code
+            actual_class = SocketCepticPy2
+        else:
+            actual_class = SocketCepticPy3
+        instance = super(SocketCeptic, actual_class).__new__(actual_class)
+        if actual_class != self_class:
+            instance.__init__(s)
+        return instance
+
+
+class SocketCepticPy2(SocketCeptic):
     """
     Wrapper for normal or ssl socket; adds necessary CEPtic functionality to sending and receiving.
     Usage: wrapped_socket = SocketCeptic(existing_socket)
@@ -188,6 +202,69 @@ class SocketCeptic(object):
             if part == "":
                 break
         return text
+
+    def get_socket(self):
+        """
+        Return raw socket instance
+        :return: basic socket instance (socket.socket)
+        """
+        return self.s
+
+    def close(self):
+        """
+        Close socket
+        :return: None
+        """
+        self.s.close()
+
+
+class SocketCepticPy3(SocketCeptic):
+    """
+    Wrapper for normal or ssl socket; adds necessary CEPtic functionality to sending and receiving.
+    Usage: wrapped_socket = SocketCeptic(existing_socket)
+    """
+    def __init__(self, s):
+        self.s = s
+
+    def send(self, msg):
+        """
+        Send message, prefixed by a 16-byte length
+        :param msg: string or bytes to send
+        :return: None
+        """
+        total_size = '%16d' % len(msg)
+        self.s.sendall(total_size.encode() + msg.encode())
+
+    def sendall(self, msg):
+        """
+        Send message, wrapper for SocketCeptic.send
+        :param msg: string or bytes to send
+        :return: None
+        """
+        return self.send(msg)
+
+    def recv(self, byte_amount):
+        """
+        Receive message, first the 16-byte length prefix, then the message of corresponding length. No more than the
+        specified amount of bytes will be received, but based on the received length less bytes could be received
+        :param byte_amount: integer
+        :return: received bytes, readable as a string
+        """
+        size_to_recv = self.s.recv(16)
+        size_to_recv = int(size_to_recv.strip())
+
+        amount = byte_amount
+        if size_to_recv < amount:
+            amount = size_to_recv
+        recvd = 0
+        text = bytes()
+        while recvd < amount:
+            part = self.s.recv(amount)
+            recvd += len(part)
+            text += part
+            if part == "":
+                break
+        return text.decode()
 
     def get_socket(self):
         """
