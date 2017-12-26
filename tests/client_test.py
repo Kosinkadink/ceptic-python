@@ -3,7 +3,7 @@ from testingfixtures import add_surrounding_dir_to_path
 add_surrounding_dir_to_path()
 
 from ceptic.client import CepticClientTemplate, main
-from ceptic.common import normalize_path, decode_unicode_hook
+from ceptic.common import normalize_path, decode_unicode_hook, FileFrame
 from shutil import rmtree, copytree
 from time import sleep
 from hashlib import sha1
@@ -36,8 +36,9 @@ class ExampleClient(CepticClientTemplate):
 		# send file
 		file_name = data["filename"]
 		file_path = os.path.join(self.fileManager.get_directory("uploads"),file_name)
+		fileframe = FileFrame(file_name, file_path, send_cache=self.get_cache_size())
 		try:
-			success_data = self.send_file(s, file_path, file_name)
+			success_data = fileframe.send(s)
 			print("CLIENT: {}".format(type(s)))
 			if success_data["status"] != 200:
 				return_data = success_data
@@ -51,8 +52,9 @@ class ExampleClient(CepticClientTemplate):
 		# send file
 		file_name = data["filename"]
 		file_path = os.path.join(self.fileManager.get_directory("downloads"),file_name)
+		fileframe = FileFrame(file_name, file_path, send_cache=self.get_cache_size())
 		try:
-			success_data = self.recv_file(s, file_path, file_name)
+			success_data = fileframe.recv(s)
 			print("CLIENT: {}".format(type(s)))
 			if success_data["status"] != 200:
 				return_data = success_data

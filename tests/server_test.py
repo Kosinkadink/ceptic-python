@@ -4,7 +4,7 @@ add_surrounding_dir_to_path()
 
 from threading import Thread
 from ceptic.server import CepticServerTemplate, main
-from ceptic.common import normalize_path
+from ceptic.common import normalize_path, FileFrame
 from shutil import rmtree, copytree
 from time import sleep
 from hashlib import sha1
@@ -30,8 +30,9 @@ class ExampleServer(CepticServerTemplate):
 	def send_file_request_endpoint(self, s, data=None):
 		file_name = data["filename"]
 		file_path = os.path.join(self.fileManager.get_directory("downloads"),file_name)
+		fileframe = FileFrame(file_name, file_path, send_cache=self.get_cache_size())
 		try:
-			return_data = json.dumps(self.recv_file(s, file_path, file_name))
+			return_data = json.dumps(fileframe.recv(s))
 		except IOError:
 			return_data = json.dumps({"status": 400, "msg": "IOError occurred"})
 		print("SERVER: {}".format(type(s)))
@@ -42,8 +43,9 @@ class ExampleServer(CepticServerTemplate):
 	def recv_file_request_endpoint(self, s, data=None):
 		file_name = data["filename"]
 		file_path = os.path.join(self.fileManager.get_directory("uploads"),file_name)
+		fileframe = FileFrame(file_name, file_path, send_cache=self.get_cache_size())
 		try:
-			return_data = json.dumps(self.send_file(s, file_path, file_name))
+			return_data = json.dumps(fileframe.send(s))
 		except IOError:
 			return_data = json.dumps({"status": 400, "msg": "IOError occurred"})
 		print("SERVER: {}".format(type(s)))

@@ -21,8 +21,6 @@ class CepticAbstraction(object):
         self.protocolManager = managers.protocolmanager.ProtocolManager(self.__location__)
         self.terminalManager = managers.terminalmanager.TerminalManager()
         self.endpointManager = managers.endpointmanager.EndpointManager()
-        if version_info >= (3,0): # check if running python3
-            self.recv_file = self.recv_file_py3
 
     def add_terminal_commands(self):
         """
@@ -52,93 +50,53 @@ class CepticAbstraction(object):
         except Exception as e:
             print(str(e))
 
-    def recv_file(self, s, file_path, file_name, send_cache=varDict["send_cache"]):
-        """
-        Receive a file to specified location
-        :param s: some SocketCeptic instance
-        :param file_path: full path of save location
-        :param file_name: filename of file; for display purposes only
-        :param send_cache: amount of bytes to attempt to receive at a time
-        :return: status of download (success: 200, failure: 400)
-        """
-        try:
-            # get size of file
-            received_string = s.recv(16).strip()
-            if received_string == "n"*16:
-                raise IOError("No file found ({}) on sender side".format(file_name))
-            file_length = int(received_string)
-            with open(file_path, 'wb') as f:
-                print("{} receiving...".format(file_name))
-                received = 0
-                while file_length > received:
-                    # print progress of download, ignore if cannot display
-                    try:
-                        sys.stdout.write(
-                            str((float(received) / file_length) * 100)[:4] + '%   ' + str(received) + '/' + str(file_length)
-                            + 'B\r'
-                        )
-                        sys.stdout.flush()
-                    except:
-                        pass
-                    data = s.recv(send_cache)
-                    if not data:
-                        break
-                    received += len(data)
-                    f.write(data)
-            # send heartbeat
-            s.sendall("ok")
-            sys.stdout.write('100.0%   ' + str(received) + '/' + str(file_length) + ' B\n')
-            print("{} receiving successful".format(file_name))
-            # return metadata
-            return {"status": 200, "msg": "OK"}
-        except Exception as e:
-            print("ERROR has occured while receiving file")
-            return {"status": 400, "msg": "{}".format(str(e))}
+    def get_cache_size(self):
+        return self.varDict["send_cache"]
 
-    def recv_file_py3(self, s, file_path, file_name, send_cache=varDict["send_cache"]):
+    def clear(self):
         """
-        Receive a file to specified location
-        :param s: some SocketCeptic instance
-        :param file_path: full path of save location
-        :param file_name: filename of file; for display purposes only
-        :param send_cache: amount of bytes to attempt to receive at a time
-        :return: status of download (success: 200, failure: 400)
+        Clears screen
+        :return: None
         """
-        try:
-            # get size of file
-            received_string = s.recv(16).strip()
-            if received_string == "n"*16:
-                raise IOError("No file found ({}) on sender side".format(file_name))
-            file_length = int(received_string)
-            with open(file_path, 'wb') as f:
-                print("{} receiving...".format(file_name))
-                received = 0
-                while file_length > received:
-                    # print progress of download, ignore if cannot display
-                    try:
-                        sys.stdout.write(
-                            str((float(received) / file_length) * 100)[:4] + '%   ' + str(received) + '/' + str(file_length)
-                            + 'B\r'
-                        )
-                        sys.stdout.flush()
-                    except:
-                        pass
-                    data = s.recv(send_cache).encode()
-                    if not data:
-                        break
-                    received += len(data)
-                    f.write(data)
-            # send heartbeat
-            s.sendall("ok")
-            sys.stdout.write('100.0%   ' + str(received) + '/' + str(file_length) + ' B\n')
-            print("{} receiving successful".format(file_name))
-            # return metadata
-            return {"status": 200, "msg": "OK"}
-        except Exception as e:
-            print("ERROR has occured while receiving file")
-            return {"status": 400, "msg": "{}".format(str(e))}
+        if os.name == 'nt':
+            os.system('cls')
+        else:
+            os.system('clear')
 
-    def send_file(self, s, file_path, file_name, send_cache=varDict["send_cache"]):
+
+class CepticException(Exception):
+    """
+    General Ceptic-related exception class
+    """
+    pass
+
+
+class FrameCeptic(object):
+    """
+    Interface for frames to be send via send/recv commands
+    """
+    def __init__(self):
+        pass
+
+    def send(self, s):
+        pass
+
+    def recv(self, s):
+        pass
+
+
+class FileFrame(FrameCeptic):
+    """
+    Object to store metadata about a file to be sent/received
+    """
+    def __init__(self, file_name, file_path, send_cache):
+        self.file_name = file_name
+        self.file_path = file_path
+        self.send_cache = send_cache
+        if version_info >= (3,0): # check if running python3
+            self.recv = self.recv_py3
+
+    def send(self, s):
         """
         Send file from specified location
         :param s: some SocketCeptic instance 
@@ -147,6 +105,9 @@ class CepticAbstraction(object):
         :param send_cache: amount of bytes to attempt to send at a time
         :return: status of upload (success: 200, failure: 400)
         """
+        file_name = self.file_name
+        file_path = self.file_path
+        send_cache = self.send_cache
         try:
             # check if file exists, and if not send file length as all "n"
             if not os.path.isfile(file_path):
@@ -184,22 +145,99 @@ class CepticAbstraction(object):
             print("ERROR has occured while sending file")
             return {"status": 400, "msg": "{}".format(str(e))}
 
-    def clear(self):
+    def recv(self, s):
         """
-        Clears screen
-        :return: None
+        Receive a file to specified location
+        :param s: some SocketCeptic instance
+        :param file_path: full path of save location
+        :param file_name: filename of file; for display purposes only
+        :param send_cache: amount of bytes to attempt to receive at a time
+        :return: status of download (success: 200, failure: 400)
         """
-        if os.name == 'nt':
-            os.system('cls')
-        else:
-            os.system('clear')
+        file_name = self.file_name
+        file_path = self.file_path
+        send_cache = self.send_cache
+        try:
+            # get size of file
+            received_string = s.recv(16).strip()
+            if received_string == "n"*16:
+                raise IOError("No file found ({}) on sender side".format(file_name))
+            file_length = int(received_string)
+            with open(file_path, 'wb') as f:
+                print("{} receiving...".format(file_name))
+                received = 0
+                while file_length > received:
+                    # print progress of download, ignore if cannot display
+                    try:
+                        sys.stdout.write(
+                            str((float(received) / file_length) * 100)[:4] + '%   ' + str(received) + '/' + str(file_length)
+                            + 'B\r'
+                        )
+                        sys.stdout.flush()
+                    except:
+                        pass
+                    data = s.recv(send_cache)
+                    if not data:
+                        break
+                    received += len(data)
+                    f.write(data)
+            # send heartbeat
+            s.sendall("ok")
+            sys.stdout.write('100.0%   ' + str(received) + '/' + str(file_length) + ' B\n')
+            print("{} receiving successful".format(file_name))
+            # return metadata
+            return {"status": 200, "msg": "OK"}
+        except Exception as e:
+            print("ERROR has occured while receiving file")
+            return {"status": 400, "msg": "{}".format(str(e))}
+
+    def recv_py3(self, s):
+        """
+        Receive a file to specified location
+        :param s: some SocketCeptic instance
+        :param file_path: full path of save location
+        :param file_name: filename of file; for display purposes only
+        :param send_cache: amount of bytes to attempt to receive at a time
+        :return: status of download (success: 200, failure: 400)
+        """
+        file_name = self.file_name
+        file_path = self.file_path
+        send_cache = self.send_cache
+        try:
+            # get size of file
+            received_string = s.recv(16).strip()
+            if received_string == "n"*16:
+                raise IOError("No file found ({}) on sender side".format(file_name))
+            file_length = int(received_string)
+            with open(file_path, 'wb') as f:
+                print("{} receiving...".format(file_name))
+                received = 0
+                while file_length > received:
+                    # print progress of download, ignore if cannot display
+                    try:
+                        sys.stdout.write(
+                            str((float(received) / file_length) * 100)[:4] + '%   ' + str(received) + '/' + str(file_length)
+                            + 'B\r'
+                        )
+                        sys.stdout.flush()
+                    except:
+                        pass
+                    data = s.recv(send_cache).encode()
+                    if not data:
+                        break
+                    received += len(data)
+                    f.write(data)
+            # send heartbeat
+            s.sendall("ok")
+            sys.stdout.write('100.0%   ' + str(received) + '/' + str(file_length) + ' B\n')
+            print("{} receiving successful".format(file_name))
+            # return metadata
+            return {"status": 200, "msg": "OK"}
+        except Exception as e:
+            print("ERROR has occured while receiving file")
+            return {"status": 400, "msg": "{}".format(str(e))}
 
 
-class CepticException(Exception):
-    """
-    General Ceptic-related exception class
-    """
-    pass
 
 
 class SocketCeptic(object):
@@ -250,7 +288,6 @@ class SocketCepticPy2(SocketCeptic):
         """
         size_to_recv = self.s.recv(16)
         size_to_recv = int(size_to_recv.strip())
-
         amount = byte_amount
         if size_to_recv < amount:
             amount = size_to_recv
