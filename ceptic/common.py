@@ -85,7 +85,7 @@ class FrameCeptic(object):
         pass
 
 
-class FileFrame(FrameCeptic):
+class FileFrame(object):
     """
     Object to store metadata about a file to be sent/received
     """

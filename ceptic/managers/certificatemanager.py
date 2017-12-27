@@ -104,5 +104,4 @@ class CertificateManager(object):
 
 
 class CertificateManagerException(CepticException):
-    def __init__(self, *args):
-        CepticException.__init__(self, *args)
+    pass
