@@ -39,6 +39,7 @@ class StreamManager(threading.Thread):
                 try:
                     received_frame = StreamFrame().recv(sock)
                 except EOFError:
+                    self.stop()
                     continue
                 # if id exists in dictionary, replace appropriate part of it
                 if received_frame.id in self.stream_dictionary:

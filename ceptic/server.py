@@ -271,6 +271,7 @@ class CepticServerTemplate(CepticAbstraction):
         self.netPass = self.fileManager.get_netpass()
         # create a socket object
         serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        serversocket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         socketlist = []
         # get local machine name
         host = ""
@@ -307,6 +308,7 @@ class CepticServerTemplate(CepticAbstraction):
                     self.service_terminal(userinp)
                 elif sock == serversocket:
                     s, addr = serversocket.accept()
+                    s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                     newthread = threading.Thread(target=self.handle_new_connection, args=(s, addr))
                     newthread.daemon = True
                     newthread.start()
