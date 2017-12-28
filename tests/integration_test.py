@@ -6,7 +6,7 @@ from client_test import ExampleClient
 from server_test import ExampleServer
 from ceptic.common import normalize_path
 from shutil import rmtree, copytree
-from time import sleep
+from time import sleep, time
 import pytest
 import sys
 import os
@@ -60,6 +60,15 @@ def test_file_transfer_recv_does_not_exist():
 	print(attempt)
 	# check if response is valid
 	assert attempt["status"] == 400
+
+def test_stream():
+	client = ExampleClient(location=test_stream.test_clientlocation,start_terminal=False)
+	test_stream.server.start()
+	# attempt to do some streaming
+	attempt = client.stream_command("localhost:9999",1)
+	print(attempt)
+	# check if response is valid
+	assert attempt["status"] == 200
 
 # set up for each function
 def setup_function(function):
@@ -143,8 +152,12 @@ if __name__ == "__main__":
 	client = ExampleClient(location=test_clientlocation,start_terminal=False)
 	server = ExampleServer(location=test_serverlocation,start_terminal=False,block_on_start=False)
 	server.start()
-	sleep(2)
-	attempt = client.ping_terminal_command("localhost:9999")
-	print(attempt)
+	frame_count = 1000
+	start = time()
+	attempt = client.stream_command("localhost:9999",frame_count)
+	end = time()
+	#for frame in attempt["returned"]:
+	#	print("{},{},{}".format(frame.id,frame.data[0],frame.data[1]))
+	print("Time: {}s for {} frames".format(end-start,frame_count))
 	server.exit()
 	sleep(1)

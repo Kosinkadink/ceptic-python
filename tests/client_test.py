@@ -4,6 +4,7 @@ add_surrounding_dir_to_path()
 
 from ceptic.client import CepticClientTemplate, main
 from ceptic.common import normalize_path, decode_unicode_hook, FileFrame
+from ceptic.managers.streammanager import StreamManager, StreamFrame
 from shutil import rmtree, copytree
 from time import sleep
 from hashlib import sha1
@@ -25,12 +26,16 @@ class ExampleClient(CepticClientTemplate):
 	def add_endpoint_commands(self):
 		self.endpointManager.add_command("send", self.send_file_endpoint)
 		self.endpointManager.add_command("recv", self.recv_file_endpoint)
+		self.endpointManager.add_command("stream", self.stream_endpoint)
 
 	def send_file_command(self, ip, filename):
 		return self.connect_ip(ip, {"filename": filename}, "send")
 
 	def recv_file_command(self, ip, filename):
 		return self.connect_ip(ip, {"filename": filename}, "recv")
+
+	def stream_command(self, ip, frame_count):
+		return self.connect_ip(ip, {"frame_count": int(frame_count)}, "stream")
 
 	def send_file_endpoint(self, s, data=None, data_to_store=None):
 		# send file
@@ -63,6 +68,35 @@ class ExampleClient(CepticClientTemplate):
 		except IOError as e:
 			return_data = {"status": 444, "msg": "IOError here: {}".format(str(e))}
 		return return_data
+
+	def stream_endpoint(self, s, data=None, data_to_store=None):
+		# start the stream
+		print("CLIENT: starting stream manager...")
+		stream = StreamManager(s, remove_on_send=False)
+		stream.start()
+		print("CLIENT: stream manager started!")
+		max_count = data["frame_count"]
+		print("CLIENT: sending frames...")
+		for n in range(max_count):
+			frame = StreamFrame(count=2)
+			frame.data[0] = json.dumps({"number":n})
+			#print("CLIENT: id {}, data {}".format(frame.id,frame.data))
+			stream.add(frame)
+		print("CLIENT: done sending frames!")
+		returned = []
+		# while all frames were not returned, anticipate frame
+		print("CLIENT: waiting for frames")
+		while len(returned) < max_count:
+			# if frame is ready to read, get it and save it
+			if stream.is_ready_to_read():
+				frame = stream.get_ready_to_read()
+				returned.append(frame)
+				#print("CLIENT: frame received! {}".format(len(returned)))
+			# wait a little bit
+			sleep(0.01)
+		print("CLIENT: done waiting for frames!")
+		# return relevant data
+		return {"status": 200, "returned": returned}
 
 # TESTS:
 

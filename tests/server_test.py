@@ -2,12 +2,13 @@ from testingfixtures import add_surrounding_dir_to_path
 # add surrounding dir to path to enable importing
 add_surrounding_dir_to_path()
 
-from threading import Thread
 from ceptic.server import CepticServerTemplate, main
-from ceptic.common import normalize_path, FileFrame
+from ceptic.common import normalize_path, decode_unicode_hook, FileFrame
+from ceptic.managers.streammanager import StreamManager, StreamFrame
 from shutil import rmtree, copytree
 from time import sleep
 from hashlib import sha1
+from threading import Thread
 import json
 import sys
 import os
@@ -26,6 +27,7 @@ class ExampleServer(CepticServerTemplate):
 	def add_endpoint_commands(self):
 		self.endpointManager.add_command("send", self.send_file_request_endpoint)
 		self.endpointManager.add_command("recv", self.recv_file_request_endpoint)
+		self.endpointManager.add_command("stream", self.stream_request_endpoint)
 
 	def send_file_request_endpoint(self, s, data=None):
 		file_name = data["filename"]
@@ -52,6 +54,34 @@ class ExampleServer(CepticServerTemplate):
 		print("SERVER: {}".format(return_data))
 		s.sendall(return_data)
 		return return_data
+
+	def stream_request_endpoint(self, s, data=None, data_to_store=None):
+		# start the stream
+		print("SERVER: starting stream manager...")
+		stream = StreamManager(s, remove_on_send=False)
+		stream.start()
+		print("SERVER: stream manager started!")
+		# if shouldn't stop, keep processing frames
+		frame_count = 0
+		while not self.shouldExit:
+			# if received frame to process, read it and process it
+			if stream.is_ready_to_read():
+				#print("SERVER: frame ready to receive!")
+				frame = stream.get_ready_to_read()
+				#print("id: {}, data: {}".format(frame.id,frame.data))
+				number = json.loads(frame.data[0],object_pairs_hook=decode_unicode_hook)["number"]
+				#print("SERVER: number in frame is {}".format(number))
+				# square the number as the reponse
+				response = {"number": number**2}
+				#print("SERVER: response saved as {}".format(str(response)))
+				frame.data[0] = None
+				frame.data[1] = json.dumps(response)
+				# send frame back
+				stream.add(frame)
+				#print("SERVER: frame send back! {}".format(frame_count))
+				frame_count += 1
+
+
 
 # TESTS:
 
