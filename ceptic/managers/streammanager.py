@@ -36,7 +36,10 @@ class StreamManager(threading.Thread):
             # if ready to read, attempt to get frame from socket
             for sock in ready_to_read:
                 # get frame
-                received_frame = StreamFrame().recv(sock)
+                try:
+                    received_frame = StreamFrame().recv(sock)
+                except EOFError:
+                    continue
                 # if id exists in dictionary, replace appropriate part of it
                 if received_frame.id in self.stream_dictionary:
                     self.stream_dictionary[received_frame.id].replace(received_frame)

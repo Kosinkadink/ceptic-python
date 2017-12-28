@@ -95,6 +95,7 @@ class ExampleClient(CepticClientTemplate):
 			# wait a little bit
 			sleep(0.01)
 		print("CLIENT: done waiting for frames!")
+		stream.stop()
 		# return relevant data
 		return {"status": 200, "returned": returned}
 

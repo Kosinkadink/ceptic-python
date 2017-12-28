@@ -290,7 +290,10 @@ class SocketCepticPy2(SocketCeptic):
         :return: received bytes, readable as a string
         """
         size_to_recv = self.s.recv(16)
-        size_to_recv = int(size_to_recv.strip())
+        try:
+            size_to_recv = int(size_to_recv.strip())
+        except ValueError as e:
+            raise EOFError("no data received (EOF)")
         amount = byte_amount
         if size_to_recv < amount:
             amount = size_to_recv
@@ -359,8 +362,10 @@ class SocketCepticPy3(SocketCeptic):
         :return: received bytes, readable as a string
         """
         size_to_recv = self.s.recv(16)
-        size_to_recv = int(size_to_recv.strip())
-
+        try:
+            size_to_recv = int(size_to_recv.strip())
+        except ValueError as e:
+            raise EOFError("no data received (EOF)")
         amount = byte_amount
         if size_to_recv < amount:
             amount = size_to_recv

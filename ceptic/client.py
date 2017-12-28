@@ -185,7 +185,9 @@ class CepticClientTemplate(CepticAbstraction):
             return conn_resp
         else:
             print("success. continuing...")
-            return command_function(s, data, dataToStore)
+            return_val = command_function(s, data, dataToStore)
+            s.close()
+            return return_val
 
     def boot(self):
         self.clear()

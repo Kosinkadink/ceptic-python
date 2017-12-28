@@ -11,6 +11,8 @@ import pytest
 import sys
 import os
 
+if os.name != "nt":
+	WindowsError = OSError
 
 def test_pinging():
 	client = ExampleClient(location=test_pinging.test_clientlocation,start_terminal=False)

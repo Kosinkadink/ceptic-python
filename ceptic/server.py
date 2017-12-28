@@ -203,7 +203,7 @@ class CepticServerTemplate(CepticAbstraction):
                     json_file.write(bytes(json.dumps(self.varDict),'utf-8'))
         # otherwise, read in values from config file
         else:
-            with open(os.path.join(self.fileManager.get_directory("specificparts"), "config.json"), "rb") as json_file:
+            with open(os.path.join(self.fileManager.get_directory("specificparts"), "config.json"), "r") as json_file:
                 self.varDict = json.load(json_file, object_pairs_hook=common.decode_unicode_hook)
                 for key in self.persistVariablesInDict:
                     self.varDict[key] = self.persistVariablesInDict[key]
