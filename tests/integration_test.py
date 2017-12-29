@@ -11,9 +11,6 @@ import pytest
 import sys
 import os
 
-if os.name != "nt":
-	WindowsError = OSError
-
 def test_pinging():
 	client = ExampleClient(location=test_pinging.test_clientlocation,start_terminal=False)
 	test_pinging.server.start()
@@ -94,19 +91,19 @@ def setup_function(function):
 	function.archive_uploads_serverdir = os.path.join(function.test_dir,"server_certs/uploads")
 	try:
 		copytree(function.archive_client_certification_dir,function.actual_certification_clientdir)
-	except WindowsError: # already exists
+	except OSError: # already exists
 		pass
 	try:
 		copytree(function.archive_server_certification_dir,function.actual_certification_serverdir)
-	except WindowsError: # already exists
+	except OSError: # already exists
 		pass
 	try:
 		copytree(function.archive_uploads_clientdir,function.actual_uploads_clientdir)
-	except WindowsError: # already exists
+	except OSError: # already exists
 		pass
 	try:
 		copytree(function.archive_uploads_serverdir,function.actual_uploads_serverdir)
-	except WindowsError: # already exists
+	except OSError: # already exists
 		pass
 	# setup server
 	function.server = ExampleServer(location=test_pinging.test_serverlocation,start_terminal=False,block_on_start=False)
@@ -147,11 +144,11 @@ if __name__ == "__main__":
 	archive_server_certification_dir = os.path.join(test_dir,"server_certs/certification")
 	try:
 		copytree(archive_server_certification_dir,actual_certification_serverdir)
-	except WindowsError:
+	except OSError:
 		pass
 	try:
 		copytree(archive_client_certification_dir,actual_certification_clientdir)
-	except WindowsError:
+	except OSError:
 		pass
 	client = ExampleClient(location=test_clientlocation,start_terminal=False)
 	server = ExampleServer(location=test_serverlocation,start_terminal=False,block_on_start=False)

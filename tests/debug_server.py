@@ -11,9 +11,6 @@ import pytest
 import sys
 import os
 
-if os.name != "nt":
-	WindowsError = OSError
-
 
 def setup_server():
 	testfiles_servername = "testfilesserver"
@@ -25,7 +22,7 @@ def setup_server():
 	archive_server_certification_dir = os.path.join(test_dir,"server_certs/certification")
 	try:
 		copytree(archive_server_certification_dir,actual_certification_serverdir)
-	except WindowsError:
+	except OSError:
 		pass
 	return test_serverlocation
 

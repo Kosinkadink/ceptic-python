@@ -11,9 +11,6 @@ import pytest
 import sys
 import os
 
-if os.name != "nt":
-	WindowsError = OSError
-
 
 def setup_client():
 	testfiles_clientname = "testfilesclient"
@@ -25,7 +22,7 @@ def setup_client():
 	archive_client_certification_dir = os.path.join(test_dir,"client_certs/certification")
 	try:
 		copytree(archive_client_certification_dir,actual_certification_clientdir)
-	except WindowsError:
+	except OSError:
 		pass
 	return test_clientlocation
 
