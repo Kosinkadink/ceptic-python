@@ -34,8 +34,9 @@ if __name__ == "__main__":
 	frame_count = 8000
 	send_delay = 0
 	start = time()
-	attempt = client.stream_command("localhost:9999",frame_count,send_delay)
+	attempt = client.stream_command("localhostdad:9999",frame_count,send_delay)
 	end = time()
+	print(attempt)
 	#for frame in attempt["returned"]:
 	#	print("{},{},{}".format(frame.id,frame.data[0],frame.data[1]))
 	print("Time: {}s for {} frames".format(end-start,frame_count))

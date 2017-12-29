@@ -134,7 +134,7 @@ class CepticClient(CepticAbstraction):
             host = ip.split(':')[0]
             port = int(ip.split(':')[1])
         except:
-            return 'invalid host/port provided\n'
+            return {"status": 404, "msg":"invalid host/port provided"}
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         #s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         s.settimeout(5)
@@ -143,7 +143,7 @@ class CepticClient(CepticAbstraction):
         except Exception as e:
             print("closing connection: {}".format(str(e)))
             s.close()
-            return "Server at " + ip + " not available\n"
+            return {"status": 404, "msg": "Server at {} not available".format(ip)}
         print("\nConnection successful to " + ip)
         return self.connect_protocol_client(s, command, data, dataToStore, varDictToUse)
 
