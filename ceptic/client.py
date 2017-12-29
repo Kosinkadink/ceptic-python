@@ -24,7 +24,7 @@ def main(argv, template_client, location, start_terminal=True):
 
 
 # sort of an abstract class; will not work on its own
-class CepticClientTemplate(CepticAbstraction):
+class CepticClient(CepticAbstraction):
     # don't change this
     netPass = None
     startTerminal = True

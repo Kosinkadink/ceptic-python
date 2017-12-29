@@ -65,7 +65,7 @@ def main(argv, template_server, location):
 
 
 # sort of an abstract class; will not work on its own
-class CepticServerTemplate(CepticAbstraction):
+class CepticServer(CepticAbstraction):
     # don't change this
     startTime = None
     netPass = None

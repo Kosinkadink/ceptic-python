@@ -2,7 +2,7 @@ from testingfixtures import add_surrounding_dir_to_path
 # add surrounding dir to path to enable importing
 add_surrounding_dir_to_path()
 
-from ceptic.server import CepticServerTemplate, main
+from ceptic.server import CepticServer, main
 from ceptic.common import normalize_path, decode_unicode_hook, FileFrame
 from ceptic.managers.streammanager import StreamManager, StreamFrame
 from shutil import rmtree, copytree
@@ -28,12 +28,12 @@ def median(lst):
 	else:
 		return sum(sorted(lst)[n//2-1:n//2+1])/2.0
 
-class ExampleServer(CepticServerTemplate):
+class ExampleServer(CepticServer):
 
 	def __init__(self, location, start_terminal=True, block_on_start=False):
 		name = "test"
 		version = "3.0.0"
-		CepticServerTemplate.__init__(self, location, start_terminal=start_terminal, server=9999, name=name, version=version, block_on_start=block_on_start)
+		CepticServer.__init__(self, location, start_terminal=start_terminal, server=9999, name=name, version=version, block_on_start=block_on_start)
 
 	def add_terminal_commands(self):
 		self.terminalManager.add_command("ping", lambda data: self.ping_terminal_command(data[1]))

@@ -2,7 +2,7 @@ from testingfixtures import add_surrounding_dir_to_path
 # add surrounding dir to path to enable importing
 add_surrounding_dir_to_path()
 
-from ceptic.client import CepticClientTemplate, main
+from ceptic.client import CepticClient, main
 from ceptic.common import normalize_path, decode_unicode_hook, FileFrame
 from ceptic.managers.streammanager import StreamManager, StreamFrame
 from shutil import rmtree, copytree
@@ -13,12 +13,12 @@ import os
 import json
 
 
-class ExampleClient(CepticClientTemplate):
+class ExampleClient(CepticClient):
 
 	def __init__(self, location, start_terminal):
 		name = "test"
 		version = "3.0.0"
-		CepticClientTemplate.__init__(self, location, start_terminal, name=name, version=version)
+		CepticClient.__init__(self, location, start_terminal, name=name, version=version)
 
 	def add_terminal_commands(self):
 		self.terminalManager.add_command("ping", lambda data: self.ping_terminal_command(data[1]))
