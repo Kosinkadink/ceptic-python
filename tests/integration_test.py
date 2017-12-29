@@ -67,7 +67,9 @@ def test_stream():
 	client = ExampleClient(location=test_stream.test_clientlocation,start_terminal=False)
 	test_stream.server.start()
 	# attempt to do some streaming
-	attempt = client.stream_command("localhost:9999",1)
+	frame_count = 1
+	delay_time = 0
+	attempt = client.stream_command("localhost:9999",frame_count,delay_time)
 	print(attempt)
 	# check if response is valid
 	assert attempt["status"] == 200
@@ -154,9 +156,10 @@ if __name__ == "__main__":
 	client = ExampleClient(location=test_clientlocation,start_terminal=False)
 	server = ExampleServer(location=test_serverlocation,start_terminal=False,block_on_start=False)
 	server.start()
-	frame_count = 1000
+	frame_count = 20
+	delay_time = 0
 	start = time()
-	attempt = client.stream_command("localhost:9999",frame_count)
+	attempt = client.stream_command("localhost:9999",frame_count, delay_time)
 	end = time()
 	#for frame in attempt["returned"]:
 	#	print("{},{},{}".format(frame.id,frame.data[0],frame.data[1]))

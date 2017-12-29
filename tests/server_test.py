@@ -6,13 +6,27 @@ from ceptic.server import CepticServerTemplate, main
 from ceptic.common import normalize_path, decode_unicode_hook, FileFrame
 from ceptic.managers.streammanager import StreamManager, StreamFrame
 from shutil import rmtree, copytree
-from time import sleep
+from time import sleep, time
 from hashlib import sha1
 from threading import Thread
 import json
 import sys
 import os
 
+def ave(some_list):
+	try:
+		return float(sum(some_list))/len(some_list)
+	except ZeroDivisionError:
+		return None
+
+def median(lst):
+	n = len(lst)
+	if n < 1:
+		return None
+	if n % 2 == 1:
+		return sorted(lst)[n//2]
+	else:
+		return sum(sorted(lst)[n//2-1:n//2+1])/2.0
 
 class ExampleServer(CepticServerTemplate):
 
@@ -62,24 +76,55 @@ class ExampleServer(CepticServerTemplate):
 		stream.start()
 		print("SERVER: stream manager started!")
 		# if shouldn't stop, keep processing frames
+		averages = dict()
+		averages["jsonloads"] = []
+		averages["jsondumps"] = []
+		averages["readsendloop"] = []
+		averages["tillreadytoread"] = []
+		frame_was_ready = True
 		frame_count = 0
-		while not self.shouldExit:
+		run_count = 0
+		while stream.is_running() and not self.shouldExit:
+			if frame_was_ready:
+				startready = time()
+				frame_was_ready = False
 			# if received frame to process, read it and process it
 			if stream.is_ready_to_read():
+				endready = time()
+				averages["tillreadytoread"].append(endready-startready)
+				frame_was_ready = True
+
+				startloop = time()
 				#print("SERVER: frame ready to receive!")
 				frame = stream.get_ready_to_read()
 				#print("id: {}, data: {}".format(frame.id,frame.data))
+				start = time()
 				number = json.loads(frame.data[0],object_pairs_hook=decode_unicode_hook)["number"]
+				end = time()
+				averages["jsonloads"].append(end-start)
 				#print("SERVER: number in frame is {}".format(number))
 				# square the number as the reponse
 				response = {"number": number**2}
 				#print("SERVER: response saved as {}".format(str(response)))
 				frame.data[0] = None
+				start = time()
 				frame.data[1] = json.dumps(response)
+				end = time()
+				averages["jsondumps"].append(end-start)
 				# send frame back
 				stream.add(frame)
 				#print("SERVER: frame send back! {}".format(frame_count))
+				endloop = time()
+				averages["readsendloop"].append(endloop-startloop)
 				frame_count += 1
+			else:
+				sleep(0.0001)
+			run_count += 1
+		print("SERVER: stream has ended!")
+		print("SERVER: jsonloads {}, jsondumps {}, readsendloop {}, tillreadytoread ({},{},{},{}), run_count {}".format(
+			ave(averages["jsonloads"]),ave(averages["jsondumps"]),ave(averages["readsendloop"]),
+			median(averages["tillreadytoread"]),ave(averages["tillreadytoread"]),min(averages["tillreadytoread"]),max(averages["tillreadytoread"]),
+			run_count))
 
 
 

@@ -346,6 +346,7 @@ class SocketCepticPy3(SocketCeptic):
         try:
             self.s.sendall(total_size.encode() + msg.encode())
         except AttributeError:
+            print("attribute error occurred")
             self.s.sendall(total_size.encode() + msg)
 
     def sendall(self, msg):
@@ -363,10 +364,12 @@ class SocketCepticPy3(SocketCeptic):
         :param byte_amount: integer
         :return: received bytes, readable as a string
         """
-        size_to_recv = self.s.recv(16)
         try:
+            size_to_recv = self.s.recv(16)
             size_to_recv = int(size_to_recv.strip())
         except ValueError as e:
+            raise EOFError("no data received (EOF)")
+        except OSError as e:
             raise EOFError("no data received (EOF)")
         amount = byte_amount
         if size_to_recv < amount:

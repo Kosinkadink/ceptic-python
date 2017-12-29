@@ -29,15 +29,15 @@ class ExampleClient(CepticClientTemplate):
 		self.endpointManager.add_command("stream", self.stream_endpoint)
 
 	def send_file_command(self, ip, filename):
-		return self.connect_ip(ip, {"filename": filename}, "send")
+		return self.connect_ip(ip, command="send", data={"filename": filename})
 
 	def recv_file_command(self, ip, filename):
-		return self.connect_ip(ip, {"filename": filename}, "recv")
+		return self.connect_ip(ip, command="recv", data={"filename": filename})
 
-	def stream_command(self, ip, frame_count):
-		return self.connect_ip(ip, {"frame_count": int(frame_count)}, "stream")
+	def stream_command(self, ip, frame_count, send_delay):
+		return self.connect_ip(ip, command="stream", data={"frame_count": int(frame_count)}, dataToStore={"send_delay": float(send_delay)})
 
-	def send_file_endpoint(self, s, data=None, data_to_store=None):
+	def send_file_endpoint(self, s, data=None, dataToStore=None):
 		# send file
 		file_name = data["filename"]
 		file_path = os.path.join(self.fileManager.get_directory("uploads"),file_name)
@@ -53,7 +53,7 @@ class ExampleClient(CepticClientTemplate):
 			return_data = {"status": 444, "msg": "IOError here: {}".format(str(e))}
 		return return_data
 
-	def recv_file_endpoint(self, s, data=None, data_to_store=None):
+	def recv_file_endpoint(self, s, data=None, dataToStore=None):
 		# send file
 		file_name = data["filename"]
 		file_path = os.path.join(self.fileManager.get_directory("downloads"),file_name)
@@ -69,31 +69,34 @@ class ExampleClient(CepticClientTemplate):
 			return_data = {"status": 444, "msg": "IOError here: {}".format(str(e))}
 		return return_data
 
-	def stream_endpoint(self, s, data=None, data_to_store=None):
+	def stream_endpoint(self, s, data=None, dataToStore=None):
 		# start the stream
 		print("CLIENT: starting stream manager...")
 		stream = StreamManager(s, remove_on_send=False)
 		stream.start()
 		print("CLIENT: stream manager started!")
 		max_count = data["frame_count"]
+		send_delay = dataToStore["send_delay"]
 		print("CLIENT: sending frames...")
 		for n in range(max_count):
 			frame = StreamFrame(count=2)
 			frame.data[0] = json.dumps({"number":n})
 			#print("CLIENT: id {}, data {}".format(frame.id,frame.data))
 			stream.add(frame)
+			sleep(send_delay)
 		print("CLIENT: done sending frames!")
 		returned = []
 		# while all frames were not returned, anticipate frame
 		print("CLIENT: waiting for frames")
-		while len(returned) < max_count:
+		while len(returned) < max_count and stream.is_running():
 			# if frame is ready to read, get it and save it
 			if stream.is_ready_to_read():
 				frame = stream.get_ready_to_read()
 				returned.append(frame)
 				#print("CLIENT: frame received! {}".format(len(returned)))
 			# wait a little bit
-			sleep(0.01)
+			else:
+				sleep(0.0001)
 		print("CLIENT: done waiting for frames!")
 		stream.stop()
 		# return relevant data

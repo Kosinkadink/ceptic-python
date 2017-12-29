@@ -99,10 +99,10 @@ class CepticClientTemplate(CepticAbstraction):
         pass
 
     def connect_with_null_dict(self, ip):
-        return self.connect_ip(ip, "None", "NULL", varDictToUse=self.nullVarDict)
+        return self.connect_ip(ip, "NULL", None, varDictToUse=self.nullVarDict)
 
     def ping_terminal_command(self, ip):
-        return self.connect_ip(ip, None, "ping")
+        return self.connect_ip(ip, "ping", None)
 
     def ping_endpoint(self, s, data=None, data_to_store=None):
         """
@@ -115,7 +115,7 @@ class CepticClientTemplate(CepticAbstraction):
         received_msg = s.recv(4)
         return {"status": 200, "msg": received_msg}
 
-    def connect_ip(self, ip, data, command, dataToStore=None, varDictToUse=None):  # connect to ip
+    def connect_ip(self, ip, command=None, data=None, dataToStore=None, varDictToUse=None):  # connect to ip
         """
         Connect to ceptic server at given ip
         :param ip: string ip:port address, written as XXX.XXX.XXX.XXX:XXXX
@@ -125,6 +125,9 @@ class CepticClientTemplate(CepticAbstraction):
         :param varDictToUse: optional variable dictionary to use instead of default client varDict
         :return: depends on data returned by command's function
         """
+        if not command:
+            raise ValueError("command must be provided")
+
         if not varDictToUse:
             varDictToUse = self.varDict
         try:
@@ -133,7 +136,7 @@ class CepticClientTemplate(CepticAbstraction):
         except:
             return 'invalid host/port provided\n'
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        #s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         s.settimeout(5)
         try:
             s.connect((host, port))
@@ -142,9 +145,9 @@ class CepticClientTemplate(CepticAbstraction):
             s.close()
             return "Server at " + ip + " not available\n"
         print("\nConnection successful to " + ip)
-        return self.connect_protocol_client(s, data, command, dataToStore, varDictToUse)
+        return self.connect_protocol_client(s, command, data, dataToStore, varDictToUse)
 
-    def connect_protocol_client(self, s, data, command, dataToStore, varDictToUse=varDict):
+    def connect_protocol_client(self, s, command, data, dataToStore, varDictToUse=varDict):
         """
         Perform general ceptic protocol handshake to continue connection
         :param s: socket created in connect_ip (socket.socket)
@@ -207,7 +210,10 @@ class CepticClientTemplate(CepticAbstraction):
         """
         self.boot()
         while not self.shouldExit:
-            inp = raw_input(">")
+            if version_info < (3,0): # python2 code
+                inp = raw_input(">")
+            else:
+                inp = input(">")
             returned = self.service_terminal(inp)
             if returned is not None:
                 print(returned)

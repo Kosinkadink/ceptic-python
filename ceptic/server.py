@@ -21,7 +21,7 @@ def main(argv, template_server, location):
     :param location: absolute directory to treat as location
     :return: None
     """
-    start_raw_input = True
+    start_input = True
     server_port_string = None
     user_port_string = None
     error_occurred = False
@@ -38,10 +38,10 @@ def main(argv, template_server, location):
             elif opt in ("-u", "--userport"):
                 user_port_string = arg
             elif opt in ("-t",):
-                start_raw_input = False
+                start_input = False
 
     # start filling in key word dictionary
-    kwargs["start_terminal"] = start_raw_input
+    kwargs["start_terminal"] = start_input
 
     if server_port_string is not None:
         try:
@@ -132,9 +132,9 @@ class CepticServerTemplate(CepticAbstraction):
         :return: None
         """
         if self.startUser:
-            raw_input_thread = threading.Thread(target=self.socket_raw_input, args=(self.varDict["userport"],))
-            raw_input_thread.daemon = True
-            raw_input_thread.start()
+            input_thread = threading.Thread(target=self.socket_input, args=(self.varDict["userport"],))
+            input_thread.daemon = True
+            input_thread.start()
             print("user input thread started - port {}".format(self.varDict["userport"]))
 
     def start_server(self):
@@ -145,7 +145,7 @@ class CepticServerTemplate(CepticAbstraction):
             server_thread.daemon=True
             server_thread.start()
 
-    def socket_raw_input(self, admin_port):
+    def socket_input(self, admin_port):
         """
         Connect to user terminal via socket
         :param admin_port: integer of user socket port
@@ -153,7 +153,10 @@ class CepticServerTemplate(CepticAbstraction):
         """
         # connect to port
         while True:
-            userinp = raw_input()
+            if version_info < (3,0): # python2 code
+                userinp = raw_input()
+            else:
+                userinp = input()
             tries = 0
             success = False
             error = None
@@ -162,6 +165,7 @@ class CepticServerTemplate(CepticAbstraction):
                 try:
                     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                     s.connect(('localhost', admin_port))
+                    s = common.SocketCeptic(s)
                 except Exception as e:
                     error = e
                     tries += 1
@@ -271,7 +275,7 @@ class CepticServerTemplate(CepticAbstraction):
         self.netPass = self.fileManager.get_netpass()
         # create a socket object
         serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        serversocket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        #serversocket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         socketlist = []
         # get local machine name
         host = ""
@@ -304,11 +308,12 @@ class CepticServerTemplate(CepticAbstraction):
                 # establish a connection
                 if sock == userinput:
                     user, addr = userinput.accept()
+                    user = common.SocketCeptic(user)
                     userinp = user.recv(128)
                     self.service_terminal(userinp)
                 elif sock == serversocket:
                     s, addr = serversocket.accept()
-                    s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                    #s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                     newthread = threading.Thread(target=self.handle_new_connection, args=(s, addr))
                     newthread.daemon = True
                     newthread.start()

@@ -25,13 +25,13 @@ class StreamManager(threading.Thread):
         self.frames_to_read = deque()
         # end of stream variables
         self.dictionary_lock = threading.Lock()
-        self.should_run = threading.Event()
-        self.timeout = 0.001
+        self.should_stop = threading.Event()
+        self.timeout = 0.0001
         self.remove_on_send = remove_on_send
 
     def run(self):
         performed = 0
-        while not self.should_run.isSet():
+        while not self.should_stop.isSet():
             ready_to_read, ready_to_write, in_error = select_ceptic([self.s], [], [], self.timeout)
             # if ready to read, attempt to get frame from socket
             for sock in ready_to_read:
@@ -55,9 +55,6 @@ class StreamManager(threading.Thread):
                 frame_to_send.send(self.s)
                 if self.remove_on_send:
                     self.pop(frame_to_send.get_id())
-            if performed%1000 == 0:
-                print("RUN function performed {} times".format(performed))
-            performed += 1
 
     # start of check if ready to read and write functions
     def is_ready_to_send(self):
@@ -109,7 +106,10 @@ class StreamManager(threading.Thread):
         return self.stream_dictionary.pop(frame_id, None)
 
     def stop(self):
-        self.should_run.set()
+        self.should_stop.set()
+
+    def is_running(self):
+        return not self.should_stop.is_set()
 
     def add(self, frame):
         self.add_frame_to_dict(frame)
@@ -210,7 +210,10 @@ class StreamFrame(object):
                 raw_data_list = []
                 received = 0
                 while received < size:
-                    raw_data_part = s.recv(self.buffering_size)
+                    if size-received < self.buffering_size:
+                        raw_data_part = s.recv(size-received)
+                    else:
+                        raw_data_part = s.recv(self.buffering_size)
                     # if no data, break out of receiving
                     if not raw_data_part:
                         break
