@@ -64,11 +64,11 @@ class CertificateManager(object):
             self.cafile = cafile
         # add default cert locations if no file locations were ever provided
         if self.certfile is None:
-            self.certfile = os.path.join(self.fileManager.get_directory("certification"), 'techtem_cert_client.pem')
+            self.certfile = os.path.join(self.fileManager.get_directory("certification"), 'cert_client.pem')
         if self.keyfile is None:
-            self.keyfile = os.path.join(self.fileManager.get_directory("certification"), 'techtem_key_client.pem')
+            self.keyfile = os.path.join(self.fileManager.get_directory("certification"), 'key_client.pem')
         if self.cafile is None:
-            self.cafile = os.path.join(self.fileManager.get_directory("certification"), 'techtem_cert_server.pem')
+            self.cafile = os.path.join(self.fileManager.get_directory("certification"), 'cert_server.pem')
         # create SSL/TLS context from provided files
         self.context = ssl.create_default_context()
         self.context.load_cert_chain(certfile=self.certfile,
@@ -90,11 +90,11 @@ class CertificateManager(object):
             self.cafile = cafile
         # add default cert locations if no file locations were ever provided
         if self.certfile is None:
-            self.certfile = os.path.join(self.fileManager.get_directory("certification"), 'techtem_cert_server.pem')
+            self.certfile = os.path.join(self.fileManager.get_directory("certification"), 'cert_server.pem')
         if self.keyfile is None:
-            self.keyfile = os.path.join(self.fileManager.get_directory("certification"), 'techtem_key_server.pem')
+            self.keyfile = os.path.join(self.fileManager.get_directory("certification"), 'key_server.pem')
         if self.cafile is None:
-            self.cafile = os.path.join(self.fileManager.get_directory("certification"), 'techtem_cert_client.pem')
+            self.cafile = os.path.join(self.fileManager.get_directory("certification"), 'cert_client.pem')
         # create SSL/TLS context from provided files
         self.context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         self.context.load_cert_chain(certfile=self.certfile,

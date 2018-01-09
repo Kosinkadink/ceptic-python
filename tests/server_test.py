@@ -150,13 +150,13 @@ def test_creation():
 	]
 	# list of files that should exist
 	files = [
-		"resources/certification/techtem_cert_client.pem",
-		"resources/certification/techtem_cert_server.pem",
-		"resources/certification/techtem_key_server.pem"
+		"resources/certification/cert_client.pem",
+		"resources/certification/cert_server.pem",
+		"resources/certification/key_server.pem"
 	]
 	# list of files that shoudl NOT exist
 	not_files = [
-		"resources/certification/techtem_key_client.pem"
+		"resources/certification/key_client.pem"
 	]
 	# check if directories exist
 	for directory in directories:
