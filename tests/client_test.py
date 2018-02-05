@@ -15,10 +15,10 @@ import json
 
 class ExampleClient(CepticClient):
 
-	def __init__(self, location, start_terminal):
+	def __init__(self, location, start_terminal, client_verify=True):
 		name = "test"
 		version = "3.0.0"
-		CepticClient.__init__(self, location, start_terminal, name=name, version=version)
+		CepticClient.__init__(self, location, start_terminal, name=name, version=version, client_verify=client_verify)
 
 	def add_terminal_commands(self):
 		self.terminalManager.add_command("ping", lambda data: self.ping_terminal_command(data[1]))

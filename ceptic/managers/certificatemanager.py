@@ -12,7 +12,7 @@ class CertificateManager(object):
     REQUEST = None
     context = None
 
-    def __init__(self, request, filemanager, certfile=None, keyfile=None, cafile=None):
+    def __init__(self, request, filemanager, certfile=None, keyfile=None, cafile=None, client_verify=True):
         """
         Provide requester type and location directory
         :param request: string representing type (CertificateManager.SERVER or CertificateManager.CLIENT)
@@ -30,6 +30,7 @@ class CertificateManager(object):
         self.certfile = certfile
         self.keyfile = keyfile
         self.cafile = cafile
+        self.client_verify = client_verify
 
     def assign_request_type(self, request):
         if request in [self.SERVER, self.CLIENT]:
@@ -45,7 +46,10 @@ class CertificateManager(object):
         :return: socket wrapped in SSL/TLS
         """
         is_server_side = self.REQUEST == self.SERVER
-        return self.context.wrap_socket(socket, server_side=is_server_side)
+        try:
+            return self.context.wrap_socket(socket, server_side=is_server_side)
+        except ssl.SSLError as e:
+            raise CertificateManagerException(str(e))
 
     def generate_context_tls(self, certfile=None, keyfile=None, cafile=None):
         pass
@@ -71,8 +75,10 @@ class CertificateManager(object):
             self.cafile = os.path.join(self.fileManager.get_directory("certification"), 'cert_server.pem')
         # create SSL/TLS context from provided files
         self.context = ssl.create_default_context()
-        self.context.load_cert_chain(certfile=self.certfile,
-                                     keyfile=self.keyfile)
+        # only load client cert + key if client verification is requested
+        if self.client_verify:
+            self.context.load_cert_chain(certfile=self.certfile,
+                                         keyfile=self.keyfile)
         self.context.check_hostname = False
         self.context.load_verify_locations(cafile=self.cafile)
 
@@ -99,8 +105,10 @@ class CertificateManager(object):
         self.context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         self.context.load_cert_chain(certfile=self.certfile,
                                      keyfile=self.keyfile)
-        self.context.load_verify_locations(cafile=self.cafile)
-        self.context.verify_mode = ssl.CERT_REQUIRED
+        # only check certs if client verification is requested
+        if self.client_verify:
+            self.context.load_verify_locations(cafile=self.cafile)
+            self.context.verify_mode = ssl.CERT_REQUIRED
 
 
 class CertificateManagerException(CepticException):

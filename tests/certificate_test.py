@@ -7,69 +7,48 @@ from server_test import ExampleServer
 from ceptic.common import normalize_path
 from shutil import rmtree, copytree
 from time import sleep, time
+from pytest import raises
 import pytest
 import sys
 import os
 
-def test_pinging():
-	client = ExampleClient(location=test_pinging.test_clientlocation,start_terminal=False)
-	test_pinging.server.start()
+def test_pinging_client_verify():
+	client = ExampleClient(location=test_pinging_client_verify.test_clientlocation,start_terminal=False)
+	test_pinging_client_verify.server.start()
+	test_pinging_client_verify.server_noverify.start()
 	# attempt to ping
 	attempt = client.ping_terminal_command("localhost:9999")
+	attempt_noverify = client.ping_terminal_command("localhost:9998")
 	print(attempt)
+	print(attempt_noverify)
 	# check if response is valid
 
+	# BOTH servers should respond properly
 	assert isinstance(attempt,dict)
 	assert attempt["status"] == 200
 	assert attempt["msg"] == "pong"
+	assert isinstance(attempt_noverify,dict)
+	assert attempt_noverify["status"] == 200
+	assert attempt_noverify["msg"] == "pong"
 
-def test_file_transfer_send():
-	client = ExampleClient(location=test_file_transfer_send.test_clientlocation,start_terminal=False)
-	test_file_transfer_send.server.start()
-	# attempt to send file
-	attempt = client.send_file_command("localhost:9999","test_file.txt")
+def test_pinging_client_no_verify():
+	client = ExampleClient(location=test_pinging_client_verify.test_clientlocation,start_terminal=False,client_verify=False)
+	test_pinging_client_no_verify.server.start()
+	test_pinging_client_no_verify.server_noverify.start()
+	# attempt to ping
+	attempt = client.ping_terminal_command("localhost:9999")
+	attempt_noverify = client.ping_terminal_command("localhost:9998")
 	print(attempt)
+	print(attempt_noverify)
 	# check if response is valid
-	assert attempt["status"] == 200
 
-#@pytest.mark.skip(reason="not written yet")
-def test_file_transfer_send_does_not_exist():
-	client = ExampleClient(location=test_file_transfer_send_does_not_exist.test_clientlocation,start_terminal=False)
-	test_file_transfer_send_does_not_exist.server.start()
-	# attempt to send file
-	attempt = client.send_file_command("localhost:9999","not_found.txt")
-	print(attempt)
-	# check if response is valid
-	assert attempt["status"] == 400
-
-def test_file_transfer_recv():
-	client = ExampleClient(location=test_file_transfer_recv.test_clientlocation,start_terminal=False)
-	test_file_transfer_recv.server.start()
-	# attempt to send file
-	attempt = client.recv_file_command("localhost:9999","test_file.txt")
-	print(attempt)
-	# check if response is valid
-	assert attempt["status"] == 200
-
-def test_file_transfer_recv_does_not_exist():
-	client = ExampleClient(location=test_file_transfer_recv_does_not_exist.test_clientlocation,start_terminal=False)
-	test_file_transfer_recv_does_not_exist.server.start()
-	# attempt to send file
-	attempt = client.recv_file_command("localhost:9999","not_found.txt")
-	print(attempt)
-	# check if response is valid
-	assert attempt["status"] == 400
-
-def test_stream():
-	client = ExampleClient(location=test_stream.test_clientlocation,start_terminal=False)
-	test_stream.server.start()
-	# attempt to do some streaming
-	frame_count = 1
-	delay_time = 0
-	attempt = client.stream_command("localhost:9999",frame_count,delay_time)
-	print(attempt)
-	# check if response is valid
-	assert attempt["status"] == 200
+	# Verify should NOT PASS, NoVerify should PASS, 
+	assert isinstance(attempt,dict)
+	assert attempt["status"] != 200
+	assert attempt["msg"] != "pong"
+	assert isinstance(attempt_noverify,dict)
+	assert attempt_noverify["status"] == 200
+	assert attempt_noverify["msg"] == "pong"
 
 # set up for each function
 def setup_function(function):
@@ -106,7 +85,8 @@ def setup_function(function):
 	except OSError: # already exists
 		pass
 	# setup server
-	function.server = ExampleServer(location=function.test_serverlocation,start_terminal=False,block_on_start=False)
+	function.server = ExampleServer(location=function.test_serverlocation,start_terminal=False,block_on_start=False,client_verify=True)
+	function.server_noverify = ExampleServer(location=function.test_serverlocation,start_terminal=False,server=9998,user=10998,block_on_start=False,client_verify=False)
 
 def teardown_function(function):
 	# remove everything
@@ -115,6 +95,7 @@ def teardown_function(function):
 	# stop the server, if exists
 	try:
 		function.server.exit()
+		function.server_noverify.exit()
 		sleep(0.25)
 	except Exception as e:
 		print(str(e))

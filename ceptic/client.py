@@ -8,7 +8,7 @@ import socket
 from sys import version_info
 import ceptic.common as common
 from ceptic.common import CepticAbstraction
-from ceptic.managers.certificatemanager import CertificateManager
+from ceptic.managers.certificatemanager import CertificateManager,CertificateManagerException
 
 
 def main(argv, template_client, location, start_terminal=True):
@@ -34,7 +34,7 @@ class CepticClient(CepticAbstraction):
     # change this to default values
     varDict = dict(send_cache=409600, scriptname='template', version='3.0.0')
 
-    def __init__(self, location=os.getcwd(), start_terminal=True, name='template', version='1.0.0'):
+    def __init__(self, location=os.getcwd(), start_terminal=True, name='template', version='1.0.0', client_verify=True):
         # set varDict arguments
         self.varDict["scriptname"] = name
         self.varDict["version"] = version
@@ -51,7 +51,7 @@ class CepticClient(CepticAbstraction):
         self.endpointManager.add_command("ping", self.ping_endpoint)
         self.add_endpoint_commands()
         # set up certificate manager
-        self.certificateManager = CertificateManager(CertificateManager.CLIENT, self.fileManager)
+        self.certificateManager = CertificateManager(CertificateManager.CLIENT, self.fileManager, client_verify=client_verify)
         # do initialization
         self.initialize()
 
@@ -158,7 +158,10 @@ class CepticClient(CepticAbstraction):
         :return:
         """
         # wrap socket with TLS, handshaking happens automatically
-        s = self.certificateManager.wrap_socket(s)
+        try:
+            s = self.certificateManager.wrap_socket(s)
+        except CertificateManagerException as e:
+            return {"status": 400, "msg": str(e)}
         # wrap socket with SocketCeptic, to send length of message first
         s = common.SocketCeptic(s)
         # create connection request

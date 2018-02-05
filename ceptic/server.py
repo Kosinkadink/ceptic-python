@@ -10,7 +10,7 @@ import threading
 from sys import version_info
 import ceptic.common as common
 from ceptic.common import CepticAbstraction
-from ceptic.managers.certificatemanager import CertificateManager
+from ceptic.managers.certificatemanager import CertificateManager,CertificateManagerException
 
 
 def main(argv, template_server, location):
@@ -76,7 +76,7 @@ class CepticServer(CepticAbstraction):
                    scriptname="template", downloadAddrIp='jedkos.com:9011',
                    downloadAddrLoc='protocols/template.py')
 
-    def __init__(self, location=os.getcwd(), server=varDict["serverport"], user=varDict["userport"], start_terminal=True, name="template", version="1.0.0", block_on_start=True):
+    def __init__(self, location=os.getcwd(), server=varDict["serverport"], user=varDict["userport"], start_terminal=True, name="template", version="1.0.0", block_on_start=True, client_verify=True):
         # set varDict arguments
         self.varDict["scriptname"] = name
         self.varDict["version"] = version
@@ -98,7 +98,7 @@ class CepticServer(CepticAbstraction):
         self.endpointManager.add_command("ping", self.ping_endpoint)
         self.add_endpoint_commands()
         # set up certificate manager
-        self.certificateManager = CertificateManager(CertificateManager.SERVER, self.fileManager)
+        self.certificateManager = CertificateManager(CertificateManager.SERVER, self.fileManager, client_verify=client_verify)
 
     def start(self):
         """
@@ -246,6 +246,12 @@ class CepticServer(CepticAbstraction):
         self.shouldExit = True
         self.clean_processes()
 
+    def stop(self):
+        """
+        Alias for exit() function
+        """
+        self.exit()
+
     def ping_endpoint(self, s, data=None):
         """
         Simple endpoint, returns PONG to client
@@ -339,7 +345,11 @@ class CepticServer(CepticAbstraction):
         """
         print("Got a connection from %s" % str(addr))
         # wrap socket with TLS, handshaking happens automatically
-        s = self.certificateManager.wrap_socket(s)
+        try:
+            s = self.certificateManager.wrap_socket(s)
+        except CertificateManagerException as e:
+            print("CertificateManagerException caught, connection terminated: {}".format(str(e)))
+            return
         # wrap socket with SocketCeptic, to send length of message first
         s = common.SocketCeptic(s)
         # receive connection request

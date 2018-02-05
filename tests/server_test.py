@@ -30,10 +30,11 @@ def median(lst):
 
 class ExampleServer(CepticServer):
 
-	def __init__(self, location, start_terminal=True, block_on_start=False):
+	def __init__(self, location, start_terminal=True, server=9999, user=10999, block_on_start=False, client_verify=True):
 		name = "test"
 		version = "3.0.0"
-		CepticServer.__init__(self, location, start_terminal=start_terminal, server=9999, name=name, version=version, block_on_start=block_on_start)
+		CepticServer.__init__(self, location, start_terminal=start_terminal, server=server, user=user, name=name, 
+									version=version, block_on_start=block_on_start, client_verify=client_verify)
 
 	def add_terminal_commands(self):
 		self.terminalManager.add_command("ping", lambda data: self.ping_terminal_command(data[1]))
