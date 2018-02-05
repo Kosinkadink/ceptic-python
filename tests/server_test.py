@@ -73,7 +73,7 @@ class ExampleServer(CepticServer):
 	def stream_request_endpoint(self, s, data=None, data_to_store=None):
 		# start the stream
 		print("SERVER: starting stream manager...")
-		stream = StreamManager(s, remove_on_send=False)
+		stream = StreamManager(s, remove_on_send=True)
 		stream.start()
 		print("SERVER: stream manager started!")
 		# if shouldn't stop, keep processing frames

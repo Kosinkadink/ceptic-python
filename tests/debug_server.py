@@ -29,5 +29,5 @@ def setup_server():
 
 if __name__ == "__main__":
 	location = setup_server()
-	server = ExampleServer(location=location,start_terminal=True,block_on_start=True)
+	server = ExampleServer(location=location,start_terminal=True,block_on_start=True,client_verify=True)
 	server.start()
