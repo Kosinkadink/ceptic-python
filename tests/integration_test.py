@@ -115,7 +115,7 @@ def teardown_function(function):
 	# stop the server, if exists
 	try:
 		function.server.exit()
-		sleep(0.25)
+		sleep(0.1)
 	except Exception as e:
 		print(str(e))
 

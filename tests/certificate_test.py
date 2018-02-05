@@ -96,7 +96,7 @@ def teardown_function(function):
 	try:
 		function.server.exit()
 		function.server_noverify.exit()
-		sleep(0.25)
+		sleep(0.1)
 	except Exception as e:
 		print(str(e))
 
