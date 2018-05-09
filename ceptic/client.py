@@ -198,7 +198,7 @@ class CepticClient(CepticAbstraction):
 
     def boot(self):
         self.clear()
-        print("TechTem {} Client started".format(self.varDict["scriptname"].capitalize()))
+        print("{} Client started".format(self.varDict["scriptname"].capitalize()))
         print("Version {}".format(self.varDict["version"]))
         print("Type help for command list\n")
 
