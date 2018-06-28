@@ -1,5 +1,7 @@
 import uuid
 import threading
+from time import time
+from sys import version_info
 from collections import deque
 from ceptic.common import CepticException, select_ceptic
 
@@ -26,13 +28,37 @@ class StreamManager(threading.Thread):
         # end of stream variables
         self.dictionary_lock = threading.Lock()
         self.should_stop = threading.Event()
-        self.timeout = 0.0001
+        self.timeout_short = 0.0001
+        self.timeout_long = 0.0001
+        self.timeout = self.timeout_short
+        self.threshold_timeout = 1.5
         self.remove_on_send = remove_on_send
 
     def run(self):
         performed = 0
+        previous_time = time()
+        consecutive_action = False
         while not self.should_stop.isSet():
             ready_to_read, ready_to_write, in_error = select_ceptic([self.s], [], [], self.timeout)
+            
+            ##if version_info <= (3,0): # if running version 2, do dynamic timeout
+            ##    # determine what timeout to use for next iteration
+            ##    if ready_to_read:
+            ##        if not consecutive_action:
+            ##            consecutive_action = True
+            ##        if self.timeout == self.timeout_long:
+            ##            print("timeout is now short! due to something to receive")
+            ##            self.timeout = self.timeout_short
+            ##    else:
+            ##        if consecutive_action:
+            ##            previous_time = time()
+            ##            consecutive_action = False
+            ##        else:
+            ##            # set timeout to long if currently short and no consecutive action and past threshold
+            ##            if self.timeout == self.timeout_short and time()-previous_time >= self.threshold_timeout:
+            ##                self.timeout = self.timeout_long
+            ##                print("timeout is now long!")
+            
             # if ready to read, attempt to get frame from socket
             for sock in ready_to_read:
                 # get frame
@@ -50,11 +76,18 @@ class StreamManager(threading.Thread):
                 self.frames_to_read.append(received_frame.get_id())
             # if there is new frame(s) to send, attempt to send frame to socket
             if self.is_ready_to_send():
-                #print("RUN frame is ready to send!")
                 frame_to_send = self.get_ready_to_send()
                 frame_to_send.send(self.s)
                 if self.remove_on_send:
                     self.pop(frame_to_send.get_id())
+
+                ##if version_info <= (3,0): # if running version 2, do dynamic timeout
+                ##    # set timeout to short if currently long and there's something ready to send
+                ##    if self.timeout == self.timeout_long and self.is_ready_to_send():
+                ##        self.timeout = self.timeout_short
+                ##        print("timeout is now short! due to something to send")
+                ##        consecutive_action = True
+
 
     # start of check if ready to read and write functions
     def is_ready_to_send(self):
@@ -239,10 +272,6 @@ class StreamFrame(object):
         # check if frame_data and term_data have been provided
         if self.count is None:
             raise StreamManagerException("No data in frame instance to send")
-        
-        # get sizes of data to be sent (16 byte blocks)
-        #frame_data_size = '%16d' % len(self.frame_data)
-        #term_data_size = '%16d' % len(self.term_data)
         # send id, count, data lengths (resp.) and data (resp.) in that order
         s.sendall(self.id)
         s.sendall('%16d' % self.count)

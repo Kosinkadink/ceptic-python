@@ -96,7 +96,7 @@ class ExampleClient(CepticClient):
 				#print("CLIENT: frame received! {}".format(len(returned)))
 			# wait a little bit
 			else:
-				sleep(0.0001)
+				sleep(0.01)
 		print("CLIENT: done waiting for frames!")
 		stream.stop()
 		# return relevant data
@@ -115,7 +115,6 @@ def test_creation():
 		"resources/programparts",
 		"resources/uploads",
 		"resources/downloads",
-		"resources/networkpass",
 		"resources/certification"
 	]
 	# list of directories that should NOT exist

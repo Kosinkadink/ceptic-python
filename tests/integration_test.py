@@ -153,8 +153,8 @@ if __name__ == "__main__":
 	client = ExampleClient(location=test_clientlocation,start_terminal=False)
 	server = ExampleServer(location=test_serverlocation,start_terminal=False,block_on_start=False)
 	server.start()
-	frame_count = 20
-	delay_time = 0
+	frame_count = 100
+	delay_time = 0.1
 	start = time()
 	attempt = client.stream_command("localhost:9999",frame_count, delay_time)
 	end = time()
@@ -162,4 +162,9 @@ if __name__ == "__main__":
 	#	print("{},{},{}".format(frame.id,frame.data[0],frame.data[1]))
 	print("Time: {}s for {} frames".format(end-start,frame_count))
 	server.exit()
+	try:
+		rmtree(test_clientlocation)
+		rmtree(test_serverlocation)
+	except Exception as e:
+		print(str(e))
 	sleep(1)

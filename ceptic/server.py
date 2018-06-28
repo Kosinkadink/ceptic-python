@@ -68,7 +68,6 @@ def main(argv, template_server, location):
 class CepticServer(CepticAbstraction):
     # don't change this
     startTime = None
-    netPass = None
     __location__ = None
     persistVariablesInDict = dict()
     # change this to default values
@@ -188,7 +187,6 @@ class CepticServer(CepticAbstraction):
         self.init_spec()
         # set up config
         self.config()
-        self.netPass = self.fileManager.get_netpass()
         self.certificateManager.generate_context_tls()
         # run processes now
         self.run_processes()
@@ -278,7 +276,6 @@ class CepticServer(CepticAbstraction):
         """
         print('%s server started - version %s on port %s\n' % (
             self.varDict["scriptname"], self.varDict["version"], self.varDict["serverport"]))
-        self.netPass = self.fileManager.get_netpass()
         # create a socket object
         serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         #serversocket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
@@ -359,10 +356,6 @@ class CepticServer(CepticAbstraction):
         ready_to_go = True
         command_function = None
         responses = {"status": 200, "msg": "OK"}
-        # check netpass
-        if conn_req["netpass"] != self.netPass:
-            ready_to_go = False
-            responses.setdefault("errors", []).append("invalid netpass")
         # check script info
         if conn_req["scriptname"] != self.varDict["scriptname"]:
             ready_to_go = False

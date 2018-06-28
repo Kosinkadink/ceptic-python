@@ -119,7 +119,7 @@ class ExampleServer(CepticServer):
 				averages["readsendloop"].append(endloop-startloop)
 				frame_count += 1
 			else:
-				sleep(0.0001)
+				sleep(0.01)
 			run_count += 1
 		print("SERVER: stream has ended!")
 		print("SERVER: jsonloads {}, jsondumps {}, readsendloop {}, tillreadytoread ({},{},{},{}), run_count {}".format(
@@ -143,7 +143,6 @@ def test_creation():
 		"resources/programparts",
 		"resources/uploads",
 		"resources/downloads",
-		"resources/networkpass",
 		"resources/certification"
 	]
 	# list of directories that should NOT exist

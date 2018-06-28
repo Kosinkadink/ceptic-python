@@ -26,7 +26,6 @@ def main(argv, template_client, location, start_terminal=True):
 # sort of an abstract class; will not work on its own
 class CepticClient(CepticAbstraction):
     # don't change this
-    netPass = None
     startTerminal = True
     __location__ = None
     nullVarDict = dict(send_cache="None", scriptname="None", version="None")
@@ -62,7 +61,6 @@ class CepticClient(CepticAbstraction):
         """
         # perform all tasks
         self.init_spec()
-        self.netPass = self.fileManager.get_netpass()
         self.certificateManager.generate_context_tls()
         self.run_processes()
 
@@ -166,7 +164,6 @@ class CepticClient(CepticAbstraction):
         s = common.SocketCeptic(s)
         # create connection request
         conn_req = json.dumps({
-            "netpass": self.netPass,
             "scriptname": varDictToUse["scriptname"],
             "version": varDictToUse["version"],
             "command": command,

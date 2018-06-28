@@ -16,7 +16,6 @@ class FileManager(object):
             "programparts": os.path.join(os.path.join(self.__location__, "resources"), "programparts"),
             "uploads": os.path.join(os.path.join(self.__location__, "resources"), "uploads"),
             "downloads": os.path.join(os.path.join(self.__location__, "resources"), "downloads"),
-            "networkpass": os.path.join(os.path.join(self.__location__, "resources"), "networkpass"),
             "certification": os.path.join(os.path.join(self.__location__, "resources"), "certification")
         }
         if create_immediately:
@@ -33,7 +32,6 @@ class FileManager(object):
         if not os.path.exists(self.locations["programparts"]): os.makedirs(self.locations["programparts"])
         if not os.path.exists(self.locations["uploads"]): os.makedirs(self.locations["uploads"])
         if not os.path.exists(self.locations["downloads"]): os.makedirs(self.locations["downloads"])
-        if not os.path.exists(self.locations["networkpass"]): os.makedirs(self.locations["networkpass"])
         if not os.path.exists(self.locations["certification"]): os.makedirs(self.locations["certification"])
 
     def add_directory(self, key, location, base_key=None):
@@ -85,24 +83,3 @@ class FileManager(object):
                 seeds.write(text)
         # add it to dictionary
         self.locations[key] = location
-
-    def get_netpass(self, passfilename="default.txt"):
-        """
-        Returns netpass from specified file in networkpass directory, default.txt by default
-        :param passfilename: some .txt filename such as "notdefault.txt", or blank
-        :return: network password (string)
-        """
-        if not os.path.exists(os.path.join(self.locations["networkpass"], passfilename)):
-            with open(os.path.join(self.locations["networkpass"], passfilename),
-                      "a") as protlist:  # file used for identifying what protocols are available
-                pass
-            netpass = None
-        else:
-            with open(os.path.join(self.locations["networkpass"], passfilename),
-                      "r") as protlist:  # file used for identifying what protocols are available
-                netpassword = protlist.readline().strip()
-            if netpassword != '':
-                netpass = netpassword
-            else:
-                netpass = None
-        return netpass
