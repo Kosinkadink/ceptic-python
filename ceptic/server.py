@@ -9,8 +9,27 @@ import threading
 
 from sys import version_info
 import ceptic.common as common
-from ceptic.common import CepticAbstraction
-from ceptic.managers.certificatemanager import CertificateManager,CertificateManagerException
+from ceptic.common import CepticAbstraction, CepticSettings
+from ceptic.managers.certificatemanager import CertificateManager,CertificateManagerException,CertificateConfiguration
+
+
+class CepticServerSettings(CepticSettings):
+    """
+    Class used to store server settings. Can be expanded upon by directly adding variables to varDict dictionary
+    """
+    def __init__(self, port, name="template", version="1.0.0", send_cache=409600, location=os.getcwd(), start_terminal=False, admin_port=-1, block_on_start=False, use_processes=False, max_parallel_count=1, request_queue_size=10):
+        CepticSettings.__init__(self)
+        self.settings["port"] = int(port)
+        self.settings["name"] = str(name)
+        self.settings["version"] = str(version)
+        self.settings["send_cache"] = int(send_cache)
+        self.settings["location"] = str(location)
+        self.settings["start_terminal"] = boolean(start_terminal)
+        self.settings["admin_port"] = int(admin_port)
+        self.settings["block_on_start"] = boolean(block_on_start)
+        self.settings["use_processes"] = boolean(use_processes)
+        self.settings["max_parallel_count"] = int(max_parallel_count)
+        self.settings["request_queue_size"] = int(request_queue_size) 
 
 
 def main(argv, template_server, location):
@@ -66,25 +85,10 @@ def main(argv, template_server, location):
 
 # sort of an abstract class; will not work on its own
 class CepticServer(CepticAbstraction):
-    # don't change this
-    startTime = None
-    __location__ = None
-    persistVariablesInDict = dict()
-    # change this to default values
-    varDict = dict(version='3.0.0', serverport=9999, userport=10999, send_cache=409600,
-                   scriptname="template", downloadAddrIp='jedkos.com:9011',
-                   downloadAddrLoc='protocols/template.py')
 
-    def __init__(self, location=os.getcwd(), server=varDict["serverport"], user=varDict["userport"], start_terminal=True, name="template", version="1.0.0", block_on_start=True, client_verify=True):
-        # set varDict arguments
-        self.varDict["scriptname"] = name
-        self.varDict["version"] = version
-        if server is not None:
-            self.persistVariablesInDict["serverport"] = int(server)
-        if user is not None:
-            self.persistVariablesInDict["userport"] = int(user)
-        CepticAbstraction.__init__(self, location)
-        self.__location__ = location
+    def __init__(self, settings, certificate_config=None):
+        self.settings = settings
+        CepticAbstraction.__init__(self)
         self.startUser = start_terminal
         self.blockOnStart = block_on_start
         self.shouldExit = False
@@ -94,10 +98,10 @@ class CepticServer(CepticAbstraction):
         self.terminalManager.add_command("info", lambda data: self.info())
         self.add_terminal_commands()
         # set up endpoints
-        self.endpointManager.add_command("ping", self.ping_endpoint)
+        self.endpointManager.add_command("singlet", "ping", self.ping_endpoint)
         self.add_endpoint_commands()
         # set up certificate manager
-        self.certificateManager = CertificateManager(CertificateManager.SERVER, self.fileManager, client_verify=client_verify)
+        self.certificateManager = CertificateManager(CertificateManager.SERVER, config=certificate_config)
 
     def start(self):
         """
@@ -131,10 +135,10 @@ class CepticServer(CepticAbstraction):
         :return: None
         """
         if self.startUser:
-            input_thread = threading.Thread(target=self.socket_input, args=(self.varDict["userport"],))
+            input_thread = threading.Thread(target=self.socket_input, args=(self.settings["userport"],))
             input_thread.daemon = True
             input_thread.start()
-            print("user input thread started - port {}".format(self.varDict["userport"]))
+            print("user input thread started - port {}".format(self.settings["userport"]))
 
     def start_server(self):
         if self.blockOnStart:
@@ -144,85 +148,21 @@ class CepticServer(CepticAbstraction):
             server_thread.daemon=True
             server_thread.start()
 
-    def socket_input(self, admin_port):
-        """
-        Connect to user terminal via socket
-        :param admin_port: integer of user socket port
-        :return: None
-        """
-        # connect to port
-        while True:
-            if version_info < (3,0): # python2 code
-                userinp = raw_input()
-            else:
-                userinp = input()
-            tries = 0
-            success = False
-            error = None
-            s = None
-            while tries < 5:
-                try:
-                    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    s.connect(('localhost', admin_port))
-                    s = common.SocketCeptic(s)
-                except Exception as e:
-                    error = e
-                    tries += 1
-                else:
-                    success = True
-                    break
-            if not success:
-                raise error
-            s.sendall(userinp)
-            if userinp == 'exit':
-                s.close()
-                break
-
     def initialize(self):
         """
         Initialize server configuration and processes
         :return: None
         """
-        # perform all tasks
-        self.init_spec()
         # set up config
-        self.config()
         self.certificateManager.generate_context_tls()
-        # run processes now
+        # initialize custom behavior
+        self.initialize_custom()
+        # run processes
         self.run_processes()
 
-    def config(self):
+    def initialize_custom(self):
         """
-        Read config json to fill in varDict
-        :return: None
-        """
-        # if config file does not exist, create your own
-        if not os.path.exists(os.path.join(self.fileManager.get_directory("specificparts"), "config.json")):
-            with open(os.path.join(self.fileManager.get_directory("specificparts"), "config.json"), "wb") as json_file:
-                if version_info < (3,0): # is 2.X
-                    json_file.write(json.dumps(self.varDict))
-                else:
-                    json_file.write(bytes(json.dumps(self.varDict),'utf-8'))
-        # otherwise, read in values from config file
-        else:
-            with open(os.path.join(self.fileManager.get_directory("specificparts"), "config.json"), "r") as json_file:
-                self.varDict = json.load(json_file, object_pairs_hook=common.decode_unicode_hook)
-                for key in self.persistVariablesInDict:
-                    self.varDict[key] = self.persistVariablesInDict[key]
-
-    def init_spec(self):
-        """
-        Initialize specific ceptic instance files
-        :return: None
-        """
-        # add specific program parts directory to fileManager
-        self.fileManager.add_directory("specificparts", self.varDict["scriptname"], "programparts")
-        self.init_spec_extra()
-
-    def init_spec_extra(self):
-        """
-        Function to overload for more specific initialization
-        :return: None
+        Override function to start custom behavior
         """
         pass
 
@@ -232,8 +172,8 @@ class CepticServer(CepticAbstraction):
         :return: None
         """
         print("-----------")
-        for key in sorted(self.varDict):
-            print("{}: {}".format(key, self.varDict[key]))
+        for key in sorted(self.settings):
+            print("{}: {}".format(key, self.settings[key]))
         print("")
 
     def exit(self):
@@ -267,65 +207,45 @@ class CepticServer(CepticAbstraction):
         """
         pass
 
-    def run_server(self, delay_time=0.1, repeat_func=None):
+    def run_server(self, delay_time=0.1):
         """
         Start server loop, with the option to run a function repeatedly and set delay time in seconds
         :param delay_time: time to wait for a connection before repeating, default is 0.1 seconds
-        :param repeat_func: optional function to repeat
         :return: None
         """
-        print('%s server started - version %s on port %s\n' % (
-            self.varDict["scriptname"], self.varDict["version"], self.varDict["serverport"]))
+        print('{} server started - version {} on port {}'.format(
+            self.settings["scriptname"], self.settings["version"], self.settings["serverport"]))
         # create a socket object
         serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         #serversocket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         socketlist = []
         # get local machine name
         host = ""
-        port = self.varDict["serverport"]
-        userport = self.varDict["userport"]
-
-        userinput = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        # bind to the port + admin port
+        port = self.settings["port"]
+        # bind to the port
         try:
             serversocket.bind((host, port))
-            userinput.bind((host, userport))
         except Exception as e:
             print(str(e))
             self.shouldExit = True
 
         # queue up to 10 requests
-        serversocket.listen(10)
+        serversocket.listen(self.settings["request_queue_size"])
         socketlist.append(serversocket)
         # start admin socket
-        userinput.listen(2)
-        socketlist.append(userinput)
 
-        while 1 and not self.shouldExit:
-            if repeat_func is not None:
-                repeat_func()
-
+        while not self.shouldExit:
             ready_to_read, ready_to_write, in_error = select.select(socketlist, [], [], delay_time)
 
             for sock in ready_to_read:
                 # establish a connection
-                if sock == userinput:
-                    user, addr = userinput.accept()
-                    user = common.SocketCeptic(user)
-                    userinp = user.recv(128)
-                    self.service_terminal(userinp)
-                elif sock == serversocket:
+                if sock == serversocket:
                     s, addr = serversocket.accept()
                     #s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                     newthread = threading.Thread(target=self.handle_new_connection, args=(s, addr))
                     newthread.daemon = True
                     newthread.start()
 
-        try:
-            userinput.shutdown(socket.SHUT_RDWR)
-        except IOError as e:
-            print(str(e))
-        userinput.close()
         try:
             serversocket.shutdown(socket.SHUT_RDWR)
         except IOError as e:
@@ -350,24 +270,18 @@ class CepticServer(CepticAbstraction):
         # wrap socket with SocketCeptic, to send length of message first
         s = common.SocketCeptic(s)
         # receive connection request
-        client_request = s.recv(1024)
+        client_request = s.recv(2048)
         conn_req = json.loads(client_request, object_pairs_hook=common.decode_unicode_hook)
         # determine if good to go
         ready_to_go = True
         command_function = None
+
         responses = {"status": 200, "msg": "OK"}
-        # check script info
-        if conn_req["scriptname"] != self.varDict["scriptname"]:
-            ready_to_go = False
-            responses.setdefault("errors", []).append("invalid scriptname: {}".format(conn_req["scriptname"]))
-        if conn_req["version"] != self.varDict["version"]:
-            ready_to_go = False
-            responses.setdefault("errors", []).append("invalid version")
         try:
-            command_function = self.endpointManager.get_command(conn_req["command"])
+            command_function = self.endpointManager.get_command(conn_req["type"],conn_req["command"])
         except KeyError as e:
             ready_to_go = False
-            responses.setdefault("errors", []).append("command not recognized: %s" % conn_req["command"])
+            responses.setdefault("errors", []).append("command of type {} not recognized: {}".format(conn_req["type"],conn_req["command"]))
         finally:
             # if ready to go, send confirmation and continue
             if ready_to_go:
@@ -381,10 +295,5 @@ class CepticServer(CepticAbstraction):
             else:
                 responses["status"] = 400
                 responses["msg"] = "BAD"
-                responses["scriptname"] = self.varDict["scriptname"]
-                responses["version"] = self.varDict["version"]
-                # allow download info to not exist
-                responses["downloadAddrIp"] = self.varDict.get("downloadAddrIp", "")
-                responses["downloadAddrLoc"] = self.varDict.get("downloadAddrLoc", "")
                 conn_resp = json.dumps(responses)
                 s.sendall(conn_resp)

@@ -28,8 +28,8 @@ class StreamManager(threading.Thread):
         # end of stream variables
         self.dictionary_lock = threading.Lock()
         self.should_stop = threading.Event()
-        self.timeout_short = 0.0001
-        self.timeout_long = 0.0001
+        self.timeout_short = 0.001
+        self.timeout_long = 0.01
         self.timeout = self.timeout_short
         self.threshold_timeout = 1.5
         self.remove_on_send = remove_on_send
@@ -109,15 +109,21 @@ class StreamManager(threading.Thread):
         Return latest frame to send; pops frame id from frames_to_send deque
         :return: latest StreamFrame to send
         """
-        frame_id = self.frames_to_send.popleft()
-        return self.stream_dictionary[frame_id]
+        try:
+            frame_id = self.frames_to_send.popleft()
+            return self.stream_dictionary[frame_id]
+        except IndexError:
+            return None
 
     def get_ready_to_read(self):
         """
         Return latest frame to read; pops frame id from frames_to_read deque
         :return: latest StreamFrame to read
         """
-        return self.stream_dictionary[self.frames_to_read.popleft()]
+        try:
+            return self.stream_dictionary[self.frames_to_read.popleft()]
+        except IndexError:
+            return None
     #  end of check if ready to read and write functions
 
     def add_frame_to_dict(self, frame_to_add):

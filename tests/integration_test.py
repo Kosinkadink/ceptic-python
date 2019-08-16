@@ -10,6 +10,8 @@ from time import sleep, time
 import pytest
 import sys
 import os
+from threading import Thread
+from multiprocessing import Process
 
 def test_pinging():
 	client = ExampleClient(location=test_pinging.test_clientlocation,start_terminal=False)
@@ -129,6 +131,10 @@ def setup_module(module):
 def teardown_module(module):
 	pass
 
+def stream_worker(ip,frame_count,delay_time,test_clientlocation):
+	client = ExampleClient(location=test_clientlocation,start_terminal=False)
+	attempt = client.stream_command(ip,frame_count, delay_time)
+
 if __name__ == "__main__":
 	testfiles_servername = "testfilesserver"
 	testfiles_clientname = "testfilesclient"
@@ -153,10 +159,28 @@ if __name__ == "__main__":
 	client = ExampleClient(location=test_clientlocation,start_terminal=False)
 	server = ExampleServer(location=test_serverlocation,start_terminal=False,block_on_start=False)
 	server.start()
-	frame_count = 100
-	delay_time = 0.1
+	frame_count = 30
+	delay_time = 0.25
+	####
+	threadslist = []
+	threadcount = 1
+	####
+	multicore = False
+
+
+	for n in range(threadcount):
+		if multicore:
+			thread = Process(target=stream_worker,args=("localhost:9999",frame_count,delay_time,test_clientlocation))
+		else:	
+			thread = Thread(target=stream_worker,args=("localhost:9999",frame_count,delay_time,test_clientlocation))
+		threadslist.append(thread)
+
 	start = time()
-	attempt = client.stream_command("localhost:9999",frame_count, delay_time)
+	#attempt = client.stream_command("localhost:9999",frame_count, delay_time)
+	for thread in threadslist:
+		thread.start()
+	for thread in threadslist:
+		thread.join()
 	end = time()
 	#for frame in attempt["returned"]:
 	#	print("{},{},{}".format(frame.id,frame.data[0],frame.data[1]))

@@ -7,8 +7,21 @@ import socket
 
 from sys import version_info
 import ceptic.common as common
-from ceptic.common import CepticAbstraction
-from ceptic.managers.certificatemanager import CertificateManager,CertificateManagerException
+from ceptic.common import CepticAbstraction, CepticSettings
+from ceptic.managers.certificatemanager import CertificateManager,CertificateManagerException,CertificateConfiguration
+
+
+class CepticClientSettings(CepticSettings):
+    """
+    Class used to store client settings. Can be expanded upon by directly adding variables to varDict dictionary
+    """
+    def __init__(self, name="template", version="1.0.0", send_cache=409600, location=os.getcwd(), start_terminal=False):
+        CepticSettings.__init__(self)
+        self.varDict["name"] = str(name)
+        self.varDict["version"] = str(version)
+        self.varDict["send_cache"] = int(send_cache)
+        self.varDict["location"] = str(location)
+        self.varDict["start_terminal"] = boolean(start_terminal)
 
 
 def main(argv, template_client, location, start_terminal=True):
@@ -25,20 +38,11 @@ def main(argv, template_client, location, start_terminal=True):
 
 # sort of an abstract class; will not work on its own
 class CepticClient(CepticAbstraction):
-    # don't change this
-    startTerminal = True
-    __location__ = None
-    nullVarDict = dict(send_cache="None", scriptname="None", version="None")
-    nullFuncMap = dict(NULL=None)
-    # change this to default values
-    varDict = dict(send_cache=409600, scriptname='template', version='3.0.0')
 
-    def __init__(self, location=os.getcwd(), start_terminal=True, name='template', version='1.0.0', client_verify=True):
-        # set varDict arguments
-        self.varDict["scriptname"] = name
-        self.varDict["version"] = version
+    def __init__(self, settings, certificate_config=None):
+        self.settings = settings
         # initialize CepticAbstraction
-        CepticAbstraction.__init__(self, location)
+        CepticAbstraction.__init__(self)
         self.startTerminal = start_terminal
         self.shouldExit = False
         # set up basic terminal commands
@@ -47,10 +51,10 @@ class CepticClient(CepticAbstraction):
         self.terminalManager.add_command("help", lambda data: self.help())
         self.add_terminal_commands()
         # set up endpoints
-        self.endpointManager.add_command("ping", self.ping_endpoint)
+        self.endpointManager.add_command("singlet", "ping", self.ping_endpoint)
         self.add_endpoint_commands()
         # set up certificate manager
-        self.certificateManager = CertificateManager(CertificateManager.CLIENT, self.fileManager, client_verify=client_verify)
+        self.certificateManager = CertificateManager(CertificateManager.CLIENT, config=certificate_config)
         # do initialization
         self.initialize()
 
@@ -60,9 +64,17 @@ class CepticClient(CepticAbstraction):
         :return: None
         """
         # perform all tasks
-        self.init_spec()
         self.certificateManager.generate_context_tls()
+        # initialize custom behavior
+        self.initialize_custom()
+        # run processes
         self.run_processes()
+
+    def initialize_custom(self):
+        """
+        Override function to start custom behavior
+        """
+        pass
 
     def run_processes(self):
         """
@@ -72,32 +84,6 @@ class CepticClient(CepticAbstraction):
         if self.startTerminal:
             # now start terminal wrapper
             self.terminal_wrapper()
-
-    def init_spec(self):
-        """
-        Initialize specific ceptic instance files
-        :return: None
-        """
-        # add specific program parts directory to fileManager
-        self.fileManager.add_directory("specificparts", self.varDict["scriptname"], base_key="programparts")
-        self.fileManager.add_file("serverlistfile", "serverlist.txt", base_key="specificparts",
-                                  text="""####################################################
-# The format is: ip:port
-# Files will be sent to and from these servers
-# Lines NOT starting with # will be read
-####################################################""")
-        # more initialization for specific applications
-        self.init_spec_extra()
-
-    def init_spec_extra(self):
-        """
-        Function to overload for more specific initialization
-        :return: None
-        """
-        pass
-
-    def connect_with_null_dict(self, ip):
-        return self.connect_ip(ip, "NULL", None, varDictToUse=self.nullVarDict)
 
     def ping_terminal_command(self, ip):
         return self.connect_ip(ip, "ping", None)
@@ -113,21 +99,18 @@ class CepticClient(CepticAbstraction):
         received_msg = s.recv(4)
         return {"status": 200, "msg": received_msg}
 
-    def connect_ip(self, ip, command=None, data=None, dataToStore=None, varDictToUse=None):  # connect to ip
+    def connect_ip(self, ip, type_name=None, command=None, data=None, dataToStore=None):  # connect to ip
         """
         Connect to ceptic server at given ip
         :param ip: string ip:port address, written as XXX.XXX.XXX.XXX:XXXX
         :param data: data to be inserted into json to send to server
         :param command: name of command to perform for client-server
         :param dataToStore: optional data to NOT send to the server but keep for local reference
-        :param varDictToUse: optional variable dictionary to use instead of default client varDict
         :return: depends on data returned by command's function
         """
         if not command:
             raise ValueError("command must be provided")
 
-        if not varDictToUse:
-            varDictToUse = self.varDict
         try:
             host = ip.split(':')[0]
             port = int(ip.split(':')[1])
@@ -143,16 +126,16 @@ class CepticClient(CepticAbstraction):
             s.close()
             return {"status": 404, "msg": "Server at {} not available".format(ip)}
         print("\nConnection successful to " + ip)
-        return self.connect_protocol_client(s, command, data, dataToStore, varDictToUse)
+        return self.connect_protocol_client(s, command, data, dataToStore)
 
-    def connect_protocol_client(self, s, command, data, dataToStore, varDictToUse=varDict):
+    def connect_protocol_client(self, s, type_name, command, data, dataToStore):
         """
         Perform general ceptic protocol handshake to continue connection
         :param s: socket created in connect_ip (socket.socket)
         :param data: data to be inserted into json to send to server
         :param command: name of command to perform for client-server
         :param dataToStore: data to NOT send to the server but keep for local reference
-        :param varDictToUse: optional variable dictionary to use instead of default client varDict
+        :param self.settings: optional variable dictionary to use instead of default client varDict
         :return:
         """
         # wrap socket with TLS, handshaking happens automatically
@@ -164,17 +147,16 @@ class CepticClient(CepticAbstraction):
         s = common.SocketCeptic(s)
         # create connection request
         conn_req = json.dumps({
-            "scriptname": varDictToUse["scriptname"],
-            "version": varDictToUse["version"],
+            "type": type_name,
             "command": command,
             "data": data
         })
         # check if command exists; stop connection if not
         try:
-            command_function = self.endpointManager.get_command(command)
+            command_function = self.endpointManager.get_command(type_name, command)
         except KeyError:
             s.close()
-            return {"status": 499, "msg": "client does not recognize command: %s" % command}
+            return {"status": 499, "msg": "client does not recognize command: {} of type: {}".format(command,type_name)}
         # send connection request
         s.sendall(conn_req)
         # get response from server
@@ -182,9 +164,7 @@ class CepticClient(CepticAbstraction):
         # determine if good to go
         if conn_resp["status"] != 200:
             s.close()
-            print("failure. closing connection: {0}:{1}:{2},{3},{4}".format(conn_resp["status"], conn_resp["msg"],
-                                                                            conn_resp["downloadAddrIp"],
-                                                                            conn_resp["downloadAddrLoc"],
+            print("failure. closing connection: {0}:{1}:{2}".format(conn_resp["status"], conn_resp["msg"],
                                                                             conn_resp["errors"]))
             return conn_resp
         else:
@@ -195,8 +175,8 @@ class CepticClient(CepticAbstraction):
 
     def boot(self):
         self.clear()
-        print("{} Client started".format(self.varDict["scriptname"].capitalize()))
-        print("Version {}".format(self.varDict["version"]))
+        print("{} Client started".format(self.settings["name"].capitalize()))
+        print("Version {}".format(self.settings["version"]))
         print("Type help for command list\n")
 
     def help(self):

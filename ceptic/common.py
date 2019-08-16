@@ -7,6 +7,20 @@ from sys import version_info
 
 # NOTE: "import ceptic.managers as managers" is found on bottom of file to work around circular import
 
+class CepticSettings(object):
+    def __init__(self):
+        self.varDict = dict()
+    def __getitem__(self, key):
+        return self.varDict[key]
+    def __setitem__(self, key, value):
+        self.varDict[key] = value
+    def __delitem__(self, key):
+        del self.varDict[key]
+    def pop(self,key,default=None):
+        if default is None:
+            return self.varDict.pop(key)
+        return self.varDict.pop(key,default)
+
 
 class CepticAbstraction(object):
     """
@@ -15,10 +29,7 @@ class CepticAbstraction(object):
 
     varDict = dict(send_cache=409600)
 
-    def __init__(self, location):
-        self.__location__ = location
-        self.fileManager = managers.filemanager.FileManager(self.__location__)
-        self.protocolManager = managers.protocolmanager.ProtocolManager(self.__location__)
+    def __init__(self):
         self.terminalManager = managers.terminalmanager.TerminalManager()
         self.endpointManager = managers.endpointmanager.EndpointManager()
 
