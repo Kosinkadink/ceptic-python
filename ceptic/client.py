@@ -1,5 +1,3 @@
-#!/usr/bin/python2
-
 import getopt
 import json
 import os

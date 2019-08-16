@@ -1,5 +1,3 @@
-#!/usr/bin/python2
-
 import os
 import select
 import sys
@@ -26,8 +24,6 @@ class CepticAbstraction(object):
     """
     Object used to store common elements between CepticClient and CepticServer
     """
-
-    varDict = dict(send_cache=409600)
 
     def __init__(self):
         self.terminalManager = managers.terminalmanager.TerminalManager()
@@ -60,9 +56,6 @@ class CepticAbstraction(object):
             print(str(e))
         except Exception as e:
             print(str(e))
-
-    def get_cache_size(self):
-        return self.varDict["send_cache"]
 
     def clear(self):
         """
@@ -456,20 +449,6 @@ def normalize_path(path):
     if os.name == 'nt':
         path = path.replace('\\', '/')
     return path
-
-
-def parse_settings_file(location):
-    """
-    Parse a settings file into list; all lines not starting with # are parsed, values separated by |
-    :param location: settings file path
-    :return: list containing parsed values
-    """
-    parsed = []
-    with open(location, "rb") as settings:
-        for line in settings:
-            if not line.startswith("#"):
-                parsed.append(line.strip().split('|'))
-    return parsed
 
 
 def decode_unicode_hook(json_pairs):
