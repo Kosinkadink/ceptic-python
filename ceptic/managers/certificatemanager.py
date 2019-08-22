@@ -34,7 +34,6 @@ class CertificateManager(object):
     SERVER = "__SERVER"
     CLIENT = "__CLIENT"
     REQUEST = None
-    context = None
 
     def __init__(self, request, config=None):
         """
@@ -42,6 +41,7 @@ class CertificateManager(object):
         :param request: string representing type (CertificateManager.SERVER or CertificateManager.CLIENT)
         :param config: CertificateConfiguration with desired settings
         """
+        self.context = None
         self.show_warnings = True
         self.REQUEST_MAP = {
             self.SERVER: self.generate_context_server,
@@ -49,6 +49,14 @@ class CertificateManager(object):
         }
         self.generate_context_tls = self.assign_request_type(request)
         self.config = config
+
+    @classmethod
+    def client(cls, config=None):
+        return cls(self.CLIENT, config)
+
+    @classmethod
+    def server(cls, config=None):
+        return cls(self.SERVER, config)
 
     def assign_request_type(self, request):
         if request in [self.SERVER, self.CLIENT]:

@@ -5,6 +5,58 @@ from sys import version_info
 
 # NOTE: "import ceptic.managers as managers" is found on bottom of file to work around circular import
 
+class CepticCommands(object):
+    GET = "get"
+    POST = "post"
+    UPDATE = "update"
+    DELETE = "delete"
+    STREAM = "stream"
+    STREAMGET = "streamget"
+    STREAMPOST = "streampost"
+
+
+class CepticStatusCode(object):
+    OK = 200
+    CREATED = 201
+    NO_CONTENT = 204
+    NOT_MODIFIED = 304
+    BAD_REQUEST = 400
+    UNAUTHORIZED = 401
+    FORBIDDEN = 403
+    NOT_FOUND = 404
+    CONFLICT = 409
+    INTERNAL_SERVER_ERROR = 500
+
+    @staticmethod
+    def is_success(status_code):
+        return status_code >= 200 and status_code <= 299
+    @staticmethod
+    def is_error(status_code):
+        return status_code >= 400 and status_code <= 599
+    @staticmethod
+    def is_client_error(status_code):
+        return status_code >= 400 and status_code <= 499
+    @staticmethod
+    def is_server_error(status_code):
+        return status_code >= 500 and status_code <= 599
+
+
+class CepticResponse(object):
+    def __init__(self, status, msg, errors=None)
+        self.status = status
+        self.msg = msg
+        if errors is None:
+            self.errors = []
+        else:
+            self.errors = errors
+    def get_dict(self):
+        return {"status":self.status, "msg":self.msg, "errors":self.errors}
+    def __repr__(self):
+        return str(self.get_dict())
+    def __str__(self):
+        return self.__repr__()
+
+
 class CepticSettings(object):
     def __init__(self):
         self.varDict = dict()

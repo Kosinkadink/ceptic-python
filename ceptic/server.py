@@ -7,7 +7,7 @@ import threading
 
 from sys import version_info
 import ceptic.common as common
-from ceptic.common import CepticAbstraction, CepticSettings
+from ceptic.common import CepticAbstraction, CepticSettings, CepticCommands
 from ceptic.managers.certificatemanager import CertificateManager,CertificateManagerException,CertificateConfiguration
 
 
@@ -90,16 +90,16 @@ class CepticServer(CepticAbstraction):
         self.startUser = start_terminal
         self.blockOnStart = block_on_start
         self.shouldExit = False
-        # set up basic terminal commands
-        self.terminalManager.add_command("exit", lambda data: self.exit())
-        self.terminalManager.add_command("clear", lambda data: self.clear())
-        self.terminalManager.add_command("info", lambda data: self.info())
-        self.add_terminal_commands()
+        # set up basic terminal endpoints
+        self.terminalManager.add_endpoint("exit", lambda data: self.exit())
+        self.terminalManager.add_endpoint("clear", lambda data: self.clear())
+        self.terminalManager.add_endpoint("info", lambda data: self.info())
+        self.add_terminal_endpoints()
         # set up endpoints
-        self.endpointManager.add_command("singlet", "ping", self.ping_endpoint)
-        self.add_endpoint_commands()
+        self.endpointManager.add_endpoint(CepticCommands.GET, "ping", self.ping_endpoint)
+        self.add_endpoints()
         # set up certificate manager
-        self.certificateManager = CertificateManager(CertificateManager.SERVER, config=certificate_config)
+        self.certificateManager = CertificateManager.server(config=certificate_config)
 
     def start(self):
         """
@@ -258,7 +258,7 @@ class CepticServer(CepticAbstraction):
         :param addr: socket address
         :return: None
         """
-        print("Got a connection from %s" % str(addr))
+        print("Got a connection from {}".format(addr))
         # wrap socket with TLS, handshaking happens automatically
         try:
             s = self.certificateManager.wrap_socket(s)
@@ -272,23 +272,23 @@ class CepticServer(CepticAbstraction):
         conn_req = json.loads(client_request, object_pairs_hook=common.decode_unicode_hook)
         # determine if good to go
         ready_to_go = True
-        command_function = None
+        endpoint_function = None
 
         responses = {"status": 200, "msg": "OK"}
         try:
-            command_function = self.endpointManager.get_command(conn_req["type"],conn_req["command"])
+            endpoint_function = self.endpointManager.get_endpoint(conn_req["type"],conn_req["endpoint"])
         except KeyError as e:
             ready_to_go = False
-            responses.setdefault("errors", []).append("command of type {} not recognized: {}".format(conn_req["type"],conn_req["command"]))
+            responses.setdefault("errors", []).append("endpoint of type {} not recognized: {}".format(conn_req["type"],conn_req["endpoint"]))
         finally:
             # if ready to go, send confirmation and continue
             if ready_to_go:
                 conn_resp = json.dumps(responses)
                 s.sendall(conn_resp)
                 if conn_req["data"] is None:
-                    command_function(s)
+                    endpoint_function(s)
                 else:
-                    command_function(s, conn_req["data"])
+                    endpoint_function(s, conn_req["data"])
             # otherwise send info back
             else:
                 responses["status"] = 400

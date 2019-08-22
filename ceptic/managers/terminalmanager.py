@@ -6,16 +6,16 @@ class TerminalManager(object):
     Used to manage terminal commands for CEPtic implementations, imports EndpointManager
     """
     def __init__(self):
-        self.endpointMap = {}
+        self.commandMap = {}
 
     def add_command(self, command, func):
         """
-        Add a command as endpoint
+        Add a command
         :param command: unique string name
         :param func: function to return
         :return: None
         """
-        self.endpointMap[command] = func;
+        self.commandMap[command] = func;
 
     def get_command(self, command):
         """
@@ -23,7 +23,7 @@ class TerminalManager(object):
         :param command: string
         :return: function object to be used
         """
-        return self.endpointMap[command]
+        return self.commandMap[command]
 
     def remove_command(self, command):
         """
@@ -31,7 +31,7 @@ class TerminalManager(object):
         :param command: string
         :return: either removed command or None
         """
-        self.endpointMap.pop(command)
+        self.commandMap.pop(command)
 
     def perform_input(self, inp):
         """
@@ -42,9 +42,9 @@ class TerminalManager(object):
         user_inp = inp.split()
         if not user_inp:
             print("no input given")
-        if user_inp[0] not in self.endpointMap:
+        if user_inp[0] not in self.commandMap:
             raise TerminalManagerException("ERROR: terminal command {} is not recognized".format(user_inp[0]))
-        return self.endpointMap[user_inp[0]](user_inp)
+        return self.commandMap[user_inp[0]](user_inp)
 
 
 class TerminalManagerException(CepticException):
