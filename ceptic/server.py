@@ -8,6 +8,7 @@ import threading
 from sys import version_info
 import ceptic.common as common
 from ceptic.common import CepticAbstraction, CepticSettings, CepticCommands
+from ceptic.managers.endpointmanager import EndpointServerManager as EndpointManager
 from ceptic.managers.certificatemanager import CertificateManager,CertificateManagerException,CertificateConfiguration
 
 
@@ -96,6 +97,7 @@ class CepticServer(CepticAbstraction):
         self.terminalManager.add_endpoint("info", lambda data: self.info())
         self.add_terminal_endpoints()
         # set up endpoints
+        self.endpointManager = EndpointManager.server()
         self.endpointManager.add_endpoint(CepticCommands.GET, "ping", self.ping_endpoint)
         self.add_endpoints()
         # set up certificate manager

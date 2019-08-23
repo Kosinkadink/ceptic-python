@@ -49,7 +49,7 @@ class CepticClient(CepticAbstraction):
         self.terminalManager.add_endpoint("help", lambda data: self.help())
         self.add_terminal_endpoints()
         # set up endpoints
-        self.endpointManager.add_endpoint(CepticCommands.GET, "ping", self.ping_endpoint)
+        self.endpointManager = EndpointManager.client()
         self.add_endpoints()
         # set up certificate manager
         self.certificateManager = CertificateManager.client(config=certificate_config)

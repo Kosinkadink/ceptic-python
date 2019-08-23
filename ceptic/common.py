@@ -90,7 +90,7 @@ class CepticAbstraction(object):
 
     def add_endpoint_commands(self):
         """
-        Add additional endpoints here bu overriding this function
+        Add additional endpoints here by overriding this function
         :return: None
         """
         pass
