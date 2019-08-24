@@ -8,7 +8,7 @@ import threading
 from sys import version_info
 import ceptic.common as common
 from ceptic.common import CepticAbstraction, CepticSettings, CepticCommands
-from ceptic.managers.endpointmanager import EndpointServerManager as EndpointManager
+from ceptic.managers.endpointmanager import EndpointManager
 from ceptic.managers.certificatemanager import CertificateManager,CertificateManagerException,CertificateConfiguration
 
 
