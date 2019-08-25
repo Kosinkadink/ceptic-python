@@ -67,8 +67,8 @@ class EndpointServerManager(EndpointManager):
     def __init__(self):
         EndpointManager.__init__(self)
 
-    def add_command(self, command, func):
-        self.commandMap[command] = [{},func]
+    def add_command(self, command, decorator):
+        self.commandMap[command] = [{},decorator]
 
     def get_command(self, command):
         try:
@@ -84,29 +84,47 @@ class EndpointServerManager(EndpointManager):
         """
         return self.commandMap.pop(command)
 
-    def add_endpoint(self, command, endpoint):
+    def add_endpoint(self, command, endpoint, handler):
         """
         Add endpoint to a command
-        :param command: string representing command
+        :param command: string representing command OR list/tuple containing multiple string commands
         :param endpoint: unique string name representing endpoint
         :return: None
         """
-        if command not in self.commandMap:
-            raise EndpointManagerException("command {} not found".format(command))
+        # create list of commands to apply endpoint to
+        commands = []
+        if not isinstance(command,(list,tuple)):
+            commands.append(command)
+        else:
+            commands = command
+        # check if commands exist
+        for comm in commands:
+            if comm not in self.commandMap:
+                raise EndpointManagerException("command '{}' not found".format(comm))
         # regex strings
-        allowed_regex = '^[a-zA-Z0-9\-\.\<\>_/]+$' # a
-        start_end_slash_regex = '^/+|/+$'
+        allowed_regex = '^[a-zA-Z0-9\-\.\<\>_/]+$' # alphanum and -.<>_
+        start_slash_regex = '^/{2,}' # 2 or more slashes at start
+        end_slash_regex = '/+$' # slashes at end
         middle_slash_regex = '/{2,}' # 2 or more slashes next to each other
         variable_regex = '\<[a-zA-Z_]+[a-zA-Z0-9_]*\>' # varied portion of endpoint
         # non-matching braces, no content between braces, slash between braces, or multiple braces without slash
         bad_braces_regex = '\<[^\>]*\<|\>[^\<]*\>|\<[^\>]+$|^[^\<]+\>|\<\>|\<([^/][^\>]*/[^/][^\>]*)+\>|\>\<'
         braces_regex = '<[^>]*>' # find variables in endpoint
-        replacement_regex = '[!-~]+' # printable ASCII characters; not actually executed here
+        replacement_regex = '[!-~][^/]+' # printable ASCII characters; not actually executed here
+        # check that endpoint is not empty
+        if not endpoint:
+            raise EndpointManagerException("endpoint definition cannot be empty")
         # check if using allowed characters
         if re.search(allowed_regex,endpoint) is None:
             raise EndpointManagerException("endpoint definition '{}' contains invalid characters".format(endpoint))
-        # remove '/' at beginning and end of endpoint
-        endpoint = re.sub(start_end_slash_regex,'',endpoint)
+        # remove '/' at end of endpoint
+        endpoint = re.sub(end_slash_regex,'',endpoint)
+        # add '/' at start of endpoint if one's not there
+        if not endpoint.startswith('/'):
+            endpoint = "/{}".format(endpoint)
+        # otherwise replace multiple '/' at start with single
+        else:
+            endpoint = re.sub(start_slash_regex,'/',endpoint)
         # check if there are multiple slashes in the middle; if so, invalid
         if re.search(middle_slash_regex,endpoint) is not None:
             raise EndpointManagerException("endpoint definition cannot contain consecutive slashes: {}".format(endpoint))
@@ -114,33 +132,37 @@ class EndpointServerManager(EndpointManager):
         if re.search(bad_braces_regex,endpoint) is not None:
             raise EndpointManagerException("endpoint definition contains invalid brace placement: {}".format(endpoint))
         # check if variables exist in endpoint, and if so store their names and replace by regex
-        variables_found = []
+        variable_names = []
         braces_found = re.findall(braces_regex,endpoint)
-        print("braces_found:{}".format(braces_found))
+        # escape unsafe regex chars in endpoint
+        endpoint = re.escape(endpoint)
         if len(braces_found):
             # check if found variable is valid
             for braces in braces_found:
-                print("braces:{}".format(braces))
                 if re.search(variable_regex,braces) is None:
-                    raise EndpointManagerException("variable {} for endpoint definition {} must start with non-numerics and only contain alphanum and underscores".format(braces,endpoint))
+                    raise EndpointManagerException("variable '{}' for endpoint definition '{}' must start with non-numerics and only contain alphanum and underscores".format(braces,endpoint))
                 # if valid variable, check if it has unique name
-                if braces[1:-1] in variables_found:
-                    raise EndpointManagerException("multiple instances of same variable {} in endpoint definition; variable names in an endpoint definition must be unique".format(braces,endpoint))
+                if braces[1:-1] in variable_names:
+                    raise EndpointManagerException("multiple instances of same variable '{}' in endpoint definition; variable names in an endpoint definition must be unique".format(braces,endpoint))
                 # remove surrounding braces when storing
-                variables_found.append(braces[1:-1])
-            # escape unsafe regex chars in endpoint
-            endpoint = re.escape(endpoint)
+                variable_names.append(braces[1:-1])
             # replace variable in endpoint with regex
+            brace_count = 0
             for braces in braces_found:
-                safe_braces = re.escape(braces)
-                print("safe_braces:{}".format(safe_braces))
+                safe_braces = re.escape(re.escape(braces))
                 # the variable contained in braces '<variable>' acts as the string to substitute;
                 # regex statement is put in its place for usage when looking up proper endpoint.
-                endpoint = re.sub(re.escape(safe_braces),replacement_regex,endpoint)
-            # add regex to make sure beginning and end of string will be included
-            endpoint = "^{}$".format(endpoint)
-        # store endpoint as key, variables as the value
-        self.commandMap[command][0][endpoint] = variables_found
+                endpoint = re.sub(safe_braces,"(?P<{}>{})".format(variable_names[brace_count],replacement_regex),endpoint)
+                brace_count+=1
+        # add regex to make sure beginning and end of string will be included
+        endpoint = "^{}$".format(endpoint)
+        # store endpoint for each command
+        for comm in commands:
+            # check if endpoint already exists
+            if endpoint in self.commandMap[comm][0]:
+                raise EndpointManagerException("endpoint '{}' for command '{}' already exists; endpoints for a command must be unique".format(endpoint,comm))
+            # store endpoint as key, [variable_names,handler] as value
+            self.commandMap[comm][0][endpoint] = [variable_names,handler]
 
     def get_endpoint(self, command, endpoint):
         """
@@ -149,15 +171,47 @@ class EndpointServerManager(EndpointManager):
         :param endpoint: string
         :return: function object to be used
         """
-        try:
-            # TODO: change to factor in regex and updated endpoint storage
-            endpointMap,func = self.commandMap[command]
-            func = endpointMap[endpoint]
-            return func
-        except KeyError as e:
-            return None
-        except IndexError as e:
-            return None
+        # check if command exists
+        if command not in self.commandMap:
+            raise EndpointManagerException("command '{}' not found".format(command))
+        # regex strings
+        allowed_regex = "^[!-~][^\\\\]+$"
+        start_slash_regex = '^/{2,}' # 2 or more slashes at start
+        end_slash_regex = '/+$' # slashes at end
+        middle_slash_regex = '/{2,}' # 2 or more slashes next to each other
+        # check that endpoint is not empty
+        if not endpoint:
+            raise EndpointManagerException("endpoint cannot be empty")
+        # check if using allowed characters
+        if re.search(allowed_regex,endpoint) is None:
+            raise EndpointManagerException("endpoint '{}' contains invalid characters".format(endpoint))
+        # remove '/' at end of endpoint
+        endpoint = re.sub(end_slash_regex,'',endpoint)
+        # add '/' at start of endpoint if one's not there
+        if not endpoint.startswith('/'):
+            endpoint = "/{}".format(endpoint)
+        # otherwise replace multiple '/' at start with single
+        else:
+            endpoint = re.sub(start_slash_regex,'/',endpoint)
+        # check if there are multiple slashes in the middle; if so, invalid
+        if re.search(middle_slash_regex,endpoint) is not None:
+            raise EndpointManagerException("endpoint definition cannot contain consecutive slashes: {}".format(endpoint))
+        # search endpoint dict for matching endpoint
+        endpointMap,decorator = self.commandMap[command]
+        proper_endpoint_regex = None
+        for endpoint_regex in endpointMap:
+            if re.search(endpoint_regex,endpoint) is not None:
+                proper_endpoint_regex = endpoint_regex
+                break
+        # if nothing found, endpoint doesn't exist
+        if proper_endpoint_regex is None:
+            raise EndpointManagerException("endpoint '{}' cannot be found for command '{}'".format(endpoint,command))
+        # otherwise get variable names and handler function
+        variable_names,handler = endpointMap[proper_endpoint_regex]
+        variable_dict = re.match(proper_endpoint_regex,endpoint).groupdict()
+        print(variable_dict)
+        # return decorated handler and variable_dict
+        #return (decorator(handler),variable_dict)
 
     def remove_endpoint(self, command, endpoint):
         """
@@ -176,8 +230,24 @@ class EndpointServerManager(EndpointManager):
 class EndpointManagerException(CepticException):
     pass
 
-#if __name__=="__main__":
-#    manager = EndpointManager.server()
-#    manager.add_command("test",None)
-#    manager.add_endpoint(command="test",endpoint="robots/<robot>/settings/<setting>")
-#    print(manager.commandMap)
+if __name__=="__main__":
+    manager = EndpointManager.server()
+    manager.add_command("get",None)
+    manager.add_command("post",None)
+    manager.add_command("update",None)
+    manager.add_command("delete",None)
+    manager.add_endpoint(command=["get","update"],endpoint="robots/<robot>/settings/<setting>",handler=None)
+    manager.add_endpoint(command=["get","post"],endpoint="robots/<robot>/settings/",handler=None)
+    manager.add_endpoint(command=["get","update"],endpoint="robots/<robot>/",handler=None)
+    manager.add_endpoint(command="get",endpoint="robots/",handler=None)
+    manager.add_endpoint(command="get",endpoint="/",handler=None)
+    for key in manager.commandMap:
+        endpointDict,func = manager.commandMap[key]
+        print("Command: {}, Func: {}".format(key,func))
+        for endpoint in endpointDict:
+            variables,handler = endpointDict[endpoint]
+            print("    {}\n        {}\n        {}".format(endpoint,variables,handler))
+    print("Getting Endpoint")
+    manager.get_endpoint(command="get",endpoint="/robots/robot1/settings/setting1")
+    manager.get_endpoint(command="get",endpoint="/robots/robot1/settings/")
+    manager.get_endpoint(command="get",endpoint="/robots/")
