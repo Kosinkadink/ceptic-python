@@ -42,7 +42,7 @@ class CepticStatusCode(object):
 
 
 class CepticResponse(object):
-    def __init__(self, status, msg, errors=None)
+    def __init__(self, status, msg, errors=None):
         self.status = status
         self.msg = msg
         if errors is None:

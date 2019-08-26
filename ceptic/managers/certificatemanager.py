@@ -3,7 +3,7 @@ import ssl
 from ceptic.common import CepticException
 
 
-class CerticateConfiguration(object):
+class CertificateConfiguration(object):
     """
     Stores certificate info used to initialize CertificateManager
     """
