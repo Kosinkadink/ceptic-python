@@ -42,34 +42,38 @@ class CepticStatusCode(object):
 
 
 class CepticResponse(object):
-    def __init__(self, status, msg, errors=None):
+    def __init__(self, status, msg, stream=None):
         self.status = status
         self.msg = msg
-        if errors is None:
-            self.errors = []
-        else:
-            self.errors = errors
+        self.stream = stream
     def get_dict(self):
-        return {"status":self.status, "msg":self.msg, "errors":self.errors}
+        return {"status":self.status, "msg":self.msg}
     def __repr__(self):
         return str(self.get_dict())
     def __str__(self):
         return self.__repr__()
 
 
+class CepticRequest(object):
+    def __init__(self, headers=None,body=None,settings=None)
+        self.headers = headers
+        self.body = body
+        self.settings = settings
+
+
 class CepticSettings(object):
     def __init__(self):
-        self.varDict = dict()
+        self.settings = dict()
     def __getitem__(self, key):
-        return self.varDict[key]
+        return self.settings[key]
     def __setitem__(self, key, value):
-        self.varDict[key] = value
+        self.settings[key] = value
     def __delitem__(self, key):
-        del self.varDict[key]
+        del self.settings[key]
     def pop(self,key,default=None):
         if default is None:
-            return self.varDict.pop(key)
-        return self.varDict.pop(key,default)
+            return self.settings.pop(key)
+        return self.settings.pop(key,default)
 
 
 class CepticAbstraction(object):

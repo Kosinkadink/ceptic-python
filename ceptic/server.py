@@ -4,17 +4,18 @@ import os
 import select
 import socket
 import threading
+import functools
 
 from sys import version_info
 import ceptic.common as common
-from ceptic.common import CepticAbstraction, CepticSettings, CepticCommands
+from ceptic.common import CepticAbstraction, CepticSettings, CepticCommands, CepticResponse
 from ceptic.managers.endpointmanager import EndpointManager
 from ceptic.managers.certificatemanager import CertificateManager,CertificateManagerException,CertificateConfiguration
 
 
 class CepticServerSettings(CepticSettings):
     """
-    Class used to store server settings. Can be expanded upon by directly adding variables to varDict dictionary
+    Class used to store server settings. Can be expanded upon by directly adding variables to settings dictionary
     """
     def __init__(self, port, name="template", version="1.0.0", send_cache=409600, location=os.getcwd(), start_terminal=False, admin_port=-1, block_on_start=False, use_processes=False, max_parallel_count=1, request_queue_size=10):
         CepticSettings.__init__(self)
@@ -82,14 +83,52 @@ def main(argv, template_server, location):
         template_server(**kwargs).start()
 
 
+def server_command(func):
+    """
+    TODO Decorator for server-side commands
+    """
+    @functools.wraps(func)
+    def decorator_server_command(s,request,endpoint_func,endpoint_dict=None):
+        # get body if content length header is present
+        if "Content-Length" in request.headers:
+            # if content length is longer than set max body length, invalid
+            if request.headers["Content-Length"] > request.settings["maxBodyLength"]:
+                s.sendall("n")
+                # send more info here
+                s.close()
+                return
+            s.sendall("y")
+            # receive alloted amount of bytes
+            body = s.recv(request.headers["Content-Length"])
+            # if content type is raw, set request body to unedited received body
+            content_type = request.headers["Content-Type"]
+            if request.headers["Content-Type"] == "raw":
+                request.body = body
+            # else if set to json, try to convert body to json
+            else if request.headers["Content-Type"] == "application/json":
+                try:
+                    request.body = json.loads(body, object_pairs_hook=common.decode_unicode_hook)
+                except ValueError as e:
+                    # failed to convert, send failed response
+                    s.sendall("n")
+                    # send more info here
+                    s.close()
+                    return
+            s.sendall("y")
+        # perform command function with appropriate params
+        func(s,request,endpoint_func,endpoint_dict)
+        # close connection
+        s.close()
+    return decorator_server_command
+
+
+
 # sort of an abstract class; will not work on its own
 class CepticServer(CepticAbstraction):
 
     def __init__(self, settings, certificate_config=None):
         self.settings = settings
         CepticAbstraction.__init__(self)
-        self.startUser = start_terminal
-        self.blockOnStart = block_on_start
         self.shouldExit = False
         # set up basic terminal endpoints
         self.terminalManager.add_endpoint("exit", lambda data: self.exit())
@@ -117,37 +156,6 @@ class CepticServer(CepticAbstraction):
         """
         self.initialize()
 
-    def run_processes(self):
-        """
-        Attempts to start user input thread and start the server loop
-        :return: None
-        """
-        try:
-            self.start_user_input()
-            self.start_server()
-        except Exception as e:
-            print(str(e))
-            self.shouldExit = True
-
-    def start_user_input(self):
-        """
-        Start thread to handle user input
-        :return: None
-        """
-        if self.startUser:
-            input_thread = threading.Thread(target=self.socket_input, args=(self.settings["userport"],))
-            input_thread.daemon = True
-            input_thread.start()
-            print("user input thread started - port {}".format(self.settings["userport"]))
-
-    def start_server(self):
-        if self.blockOnStart:
-            self.run_server()
-        else:
-            server_thread = threading.Thread(target=self.run_server)
-            server_thread.daemon=True
-            server_thread.start()
-
     def initialize(self):
         """
         Initialize server configuration and processes
@@ -165,6 +173,37 @@ class CepticServer(CepticAbstraction):
         Override function to start custom behavior
         """
         pass
+
+    def run_processes(self):
+        """
+        Attempts to start user input thread and start the server loop
+        :return: None
+        """
+        try:
+            self.start_user_input()
+            self.start_server()
+        except Exception as e:
+            print(str(e))
+            self.shouldExit = True
+
+    def start_user_input(self):
+        """
+        Start thread to handle user input
+        :return: None
+        """
+        if self.settings["start_terminal"]:
+            input_thread = threading.Thread(target=self.socket_input, args=(self.settings["userport"],))
+            input_thread.daemon = True
+            input_thread.start()
+            print("user input thread started - port {}".format(self.settings["userport"]))
+
+    def start_server(self):
+        if self.settings["block_on_start"]:
+            self.run_server()
+        else:
+            server_thread = threading.Thread(target=self.run_server)
+            server_thread.daemon=True
+            server_thread.start()
 
     def info(self):  # display current configuration
         """
@@ -190,15 +229,15 @@ class CepticServer(CepticAbstraction):
         """
         self.exit()
 
-    def ping_endpoint(self, s, data=None):
+    @self.route("ping",CepticCommands.GET)
+    def ping_endpoint(self, request):
         """
         Simple endpoint, returns PONG to client
         :param s: SocketCeptic instance
         :param data: additional data
         :return: success state
         """
-        s.sendall("pong")
-        return {"status": 200, "msg": "ping"}
+        return CepticResponse(200,"ping")
 
     def clean_processes(self):
         """
@@ -297,3 +336,13 @@ class CepticServer(CepticAbstraction):
                 responses["msg"] = "BAD"
                 conn_resp = json.dumps(responses)
                 s.sendall(conn_resp)
+
+    def route(self, func, endpoint, command, settings_override=None):
+        """
+        Decorator for adding endpoints to server instance
+        """
+        @functools.wraps(func)
+        def decorator_route(func):
+            self.endpointManager.add_endpoint(command, endpoint, func)
+            return func
+        return decorator_route

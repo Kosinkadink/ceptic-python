@@ -67,8 +67,8 @@ class EndpointServerManager(EndpointManager):
     def __init__(self):
         EndpointManager.__init__(self)
 
-    def add_command(self, command, decorator):
-        self.commandMap[command] = [{},decorator]
+    def add_command(self, command, decorator, settings):
+        self.commandMap[command] = [{},decorator,settings]
 
     def get_command(self, command):
         try:
@@ -84,11 +84,12 @@ class EndpointServerManager(EndpointManager):
         """
         return self.commandMap.pop(command)
 
-    def add_endpoint(self, command, endpoint, handler):
+    def add_endpoint(self, command, endpoint, handler, settings_override=None):
         """
         Add endpoint to a command
         :param command: string representing command OR list/tuple containing multiple string commands
         :param endpoint: unique string name representing endpoint
+        :param settings_override: dictionary representing setting values
         :return: None
         """
         # create list of commands to apply endpoint to
@@ -232,10 +233,10 @@ class EndpointManagerException(CepticException):
 
 if __name__=="__main__":
     manager = EndpointManager.server()
-    manager.add_command("get",None)
-    manager.add_command("post",None)
-    manager.add_command("update",None)
-    manager.add_command("delete",None)
+    manager.add_command("get",None,None)
+    manager.add_command("post",None,None)
+    manager.add_command("update",None,None)
+    manager.add_command("delete",None,None)
     manager.add_endpoint(command=["get","update"],endpoint="robots/<robot>/settings/<setting>",handler=None)
     manager.add_endpoint(command=["get","post"],endpoint="robots/<robot>/settings/",handler=None)
     manager.add_endpoint(command=["get","update"],endpoint="robots/<robot>/",handler=None)

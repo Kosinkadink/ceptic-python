@@ -11,15 +11,15 @@ from ceptic.managers.certificatemanager import CertificateManager,CertificateMan
 
 class CepticClientSettings(CepticSettings):
     """
-    Class used to store client settings. Can be expanded upon by directly adding variables to varDict dictionary
+    Class used to store client settings. Can be expanded upon by directly adding variables to settings dictionary
     """
     def __init__(self, name="template", version="1.0.0", send_cache=409600, location=os.getcwd(), start_terminal=False):
         CepticSettings.__init__(self)
-        self.varDict["name"] = str(name)
-        self.varDict["version"] = str(version)
-        self.varDict["send_cache"] = int(send_cache)
-        self.varDict["location"] = str(location)
-        self.varDict["start_terminal"] = boolean(start_terminal)
+        self.settings["name"] = str(name)
+        self.settings["version"] = str(version)
+        self.settings["send_cache"] = int(send_cache)
+        self.settings["location"] = str(location)
+        self.settings["start_terminal"] = boolean(start_terminal)
 
 
 def main(argv, template_client, location, start_terminal=True):
@@ -41,7 +41,6 @@ class CepticClient(CepticAbstraction):
         self.settings = settings
         # initialize CepticAbstraction
         CepticAbstraction.__init__(self)
-        self.startTerminal = start_terminal
         self.shouldExit = False
         # set up basic terminal endpoints
         self.terminalManager.add_endpoint("exit", lambda data: self.exit())
@@ -79,7 +78,7 @@ class CepticClient(CepticAbstraction):
         Attempts to start terminal wrapper if variable startTerminal is true
         :return: None
         """
-        if self.startTerminal:
+        if self.settings["start_terminal"]:
             # now start terminal wrapper
             self.terminal_wrapper()
 
