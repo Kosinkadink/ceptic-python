@@ -17,70 +17,17 @@ class CepticServerSettings(CepticSettings):
     """
     Class used to store server settings. Can be expanded upon by directly adding variables to settings dictionary
     """
-    def __init__(self, port, name="template", version="1.0.0", send_cache=409600, location=os.getcwd(), start_terminal=False, admin_port=-1, block_on_start=False, use_processes=False, max_parallel_count=1, request_queue_size=10):
+    def __init__(self, port, name="template", version="1.0.0", send_cache=409600, location=os.getcwd(), block_on_start=False, use_processes=False, max_parallel_count=1, request_queue_size=10):
         CepticSettings.__init__(self)
         self.settings["port"] = int(port)
         self.settings["name"] = str(name)
         self.settings["version"] = str(version)
         self.settings["send_cache"] = int(send_cache)
         self.settings["location"] = str(location)
-        self.settings["start_terminal"] = boolean(start_terminal)
-        self.settings["admin_port"] = int(admin_port)
         self.settings["block_on_start"] = boolean(block_on_start)
         self.settings["use_processes"] = boolean(use_processes)
         self.settings["max_parallel_count"] = int(max_parallel_count)
         self.settings["request_queue_size"] = int(request_queue_size) 
-
-
-def main(argv, template_server, location):
-    """
-    Wrapper function for starting a ceptic server via terminal
-    :param argv: arguments from terminal input
-    :param template_server: ceptic server class
-    :param location: absolute directory to treat as location
-    :return: None
-    """
-    start_input = True
-    server_port_string = None
-    user_port_string = None
-    error_occurred = False
-    kwargs = {"location": location}
-    try:
-        opts, args = getopt.getopt(argv, 'tp:u:', ['port=', 'userport='])
-    except getopt.GetoptError:
-        print('-p [port] or --port=[port], -u [port] or --userport=[port]')
-        quit()
-    else:
-        for opt, arg in opts:
-            if opt in ("-p", "--port"):
-                server_port_string = arg
-            elif opt in ("-u", "--userport"):
-                user_port_string = arg
-            elif opt in ("-t",):
-                start_input = False
-
-    # start filling in key word dictionary
-    kwargs["start_terminal"] = start_input
-
-    if server_port_string is not None:
-        try:
-            server_port_int = int(server_port_string)
-        except ValueError:
-            print('ERROR: server port must be an integer')
-            error_occurred = True
-        else:
-            kwargs["server"] = server_port_int
-    if user_port_string is not None:
-        try:
-            user_port_int = int(user_port_string)
-        except ValueError:
-            print('ERROR: user port must be an integer')
-            error_occurred = True
-        else:
-            kwargs["user"] = user_port_int
-
-    if not error_occurred:
-        template_server(**kwargs).start()
 
 
 def server_command(func):
@@ -122,8 +69,6 @@ def server_command(func):
     return decorator_server_command
 
 
-
-# sort of an abstract class; will not work on its own
 class CepticServer(CepticAbstraction):
 
     def __init__(self, settings, certificate_config=None):
@@ -180,22 +125,10 @@ class CepticServer(CepticAbstraction):
         :return: None
         """
         try:
-            self.start_user_input()
             self.start_server()
         except Exception as e:
             print(str(e))
             self.shouldExit = True
-
-    def start_user_input(self):
-        """
-        Start thread to handle user input
-        :return: None
-        """
-        if self.settings["start_terminal"]:
-            input_thread = threading.Thread(target=self.socket_input, args=(self.settings["userport"],))
-            input_thread.daemon = True
-            input_thread.start()
-            print("user input thread started - port {}".format(self.settings["userport"]))
 
     def start_server(self):
         if self.settings["block_on_start"]:
@@ -229,7 +162,7 @@ class CepticServer(CepticAbstraction):
         """
         self.exit()
 
-    @self.route("ping",CepticCommands.GET)
+    @self.route("/ping",CepticCommands.GET)
     def ping_endpoint(self, request):
         """
         Simple endpoint, returns PONG to client
@@ -237,7 +170,7 @@ class CepticServer(CepticAbstraction):
         :param data: additional data
         :return: success state
         """
-        return CepticResponse(200,"ping")
+        return CepticResponse(200,"pong")
 
     def clean_processes(self):
         """
@@ -271,7 +204,6 @@ class CepticServer(CepticAbstraction):
         # queue up to 10 requests
         serversocket.listen(self.settings["request_queue_size"])
         socketlist.append(serversocket)
-        # start admin socket
 
         while not self.shouldExit:
             ready_to_read, ready_to_write, in_error = select.select(socketlist, [], [], delay_time)
@@ -343,6 +275,6 @@ class CepticServer(CepticAbstraction):
         """
         @functools.wraps(func)
         def decorator_route(func):
-            self.endpointManager.add_endpoint(command, endpoint, func)
+            self.endpointManager.add_endpoint(command, endpoint, func, settings_override)
             return func
         return decorator_route

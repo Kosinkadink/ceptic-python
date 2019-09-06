@@ -22,19 +22,6 @@ class CepticClientSettings(CepticSettings):
         self.settings["start_terminal"] = boolean(start_terminal)
 
 
-def main(argv, template_client, location, start_terminal=True):
-    """
-    Wrapper function for starting a ceptic client via terminal
-    :param argv: arguments from terminal input
-    :param template_client: ceptic client class
-    :param location: absolute directory to treat as location
-    :param start_terminal: boolean to determine if a user input loop should be started
-    :return: None
-    """
-    template_client(location, start_terminal=start_terminal)
-
-
-# sort of an abstract class; will not work on its own
 class CepticClient(CepticAbstraction):
 
     def __init__(self, settings, certificate_config=None):

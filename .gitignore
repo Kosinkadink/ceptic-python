@@ -2,3 +2,5 @@ build/*
 .idea/*
 *.pyc
 .cache/*
+env/*
+env3/*

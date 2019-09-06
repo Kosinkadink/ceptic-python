@@ -55,10 +55,11 @@ class CepticResponse(object):
 
 
 class CepticRequest(object):
-    def __init__(self, headers=None,body=None,settings=None)
+    def __init__(self, headers=None,body=None,settings=None,command=None)
         self.headers = headers
         self.body = body
         self.settings = settings
+        self.command = command
 
 
 class CepticSettings(object):
