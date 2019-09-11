@@ -14,12 +14,11 @@ class CepticClientSettings(CepticSettings):
     """
     Class used to store client settings. Can be expanded upon by directly adding variables to settings dictionary
     """
-    def __init__(self, name="template", version="1.0.0", send_cache=409600, location=os.getcwd()):
+    def __init__(self, name="template", version="1.0.0", send_cache=409600):
         CepticSettings.__init__(self)
         self.settings["name"] = str(name)
         self.settings["version"] = str(version)
         self.settings["send_cache"] = int(send_cache)
-        self.settings["location"] = str(location)
 
 
 class CepticClient(CepticAbstraction):
@@ -90,7 +89,7 @@ class CepticClient(CepticAbstraction):
         except CertificateManagerException as e:
             return {"status": 400, "msg": str(e)}
         # wrap socket with SocketCeptic, to send length of message first
-        s = common.SocketCeptic(s)
+        s = SocketCeptic(s)
         # create connection request
         conn_req = json.dumps({
             "type": type_name,
@@ -106,7 +105,7 @@ class CepticClient(CepticAbstraction):
         # send connection request
         s.sendall(conn_req)
         # get response from server
-        conn_resp = json.loads(s.recv(1024), object_pairs_hook=common.decode_unicode_hook)
+        conn_resp = json.loads(s.recv(1024), object_pairs_hook=decode_unicode_hook)
         # determine if good to go
         if conn_resp["status"] != 200:
             s.close()

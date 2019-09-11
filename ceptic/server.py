@@ -17,13 +17,12 @@ class CepticServerSettings(CepticSettings):
     """
     Class used to store server settings. Can be expanded upon by directly adding variables to settings dictionary
     """
-    def __init__(self, port=9000, name="template", version="1.0.0", send_cache=409600, location=os.getcwd(), block_on_start=False, use_processes=False, max_parallel_count=1, request_queue_size=10):
+    def __init__(self, port=9000, name="template", version="1.0.0", send_cache=409600, block_on_start=False, use_processes=False, max_parallel_count=1, request_queue_size=10):
         CepticSettings.__init__(self)
         self.settings["port"] = int(port)
         self.settings["name"] = str(name)
         self.settings["version"] = str(version)
         self.settings["send_cache"] = int(send_cache)
-        self.settings["location"] = str(location)
         self.settings["block_on_start"] = boolean(block_on_start)
         self.settings["use_processes"] = boolean(use_processes)
         self.settings["max_parallel_count"] = int(max_parallel_count)
