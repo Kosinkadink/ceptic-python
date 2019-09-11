@@ -7,8 +7,8 @@ import threading
 import functools
 
 from sys import version_info
-import ceptic.common as common
-from ceptic.common import CepticAbstraction, CepticSettings, CepticCommands, CepticResponse
+from ceptic.network import SocketCeptic
+from ceptic.common import CepticAbstraction,CepticSettings,CepticCommands,CepticResponse
 from ceptic.managers.endpointmanager import EndpointManager
 from ceptic.managers.certificatemanager import CertificateManager,CertificateManagerException,CertificateConfiguration
 
@@ -17,7 +17,7 @@ class CepticServerSettings(CepticSettings):
     """
     Class used to store server settings. Can be expanded upon by directly adding variables to settings dictionary
     """
-    def __init__(self, port, name="template", version="1.0.0", send_cache=409600, location=os.getcwd(), block_on_start=False, use_processes=False, max_parallel_count=1, request_queue_size=10):
+    def __init__(self, port=9000, name="template", version="1.0.0", send_cache=409600, location=os.getcwd(), block_on_start=False, use_processes=False, max_parallel_count=1, request_queue_size=10):
         CepticSettings.__init__(self)
         self.settings["port"] = int(port)
         self.settings["name"] = str(name)
@@ -27,10 +27,10 @@ class CepticServerSettings(CepticSettings):
         self.settings["block_on_start"] = boolean(block_on_start)
         self.settings["use_processes"] = boolean(use_processes)
         self.settings["max_parallel_count"] = int(max_parallel_count)
-        self.settings["request_queue_size"] = int(request_queue_size) 
+        self.settings["request_queue_size"] = int(request_queue_size)
 
 
-def server_command(func):
+def wrap_server_command(func):
     """
     TODO Decorator for server-side commands
     """
@@ -54,7 +54,7 @@ def server_command(func):
             # else if set to json, try to convert body to json
             else if request.headers["Content-Type"] == "application/json":
                 try:
-                    request.body = json.loads(body, object_pairs_hook=common.decode_unicode_hook)
+                    request.body = json.loads(body, object_pairs_hook=decode_unicode_hook)
                 except ValueError as e:
                     # failed to convert, send failed response
                     s.sendall("n")
@@ -75,30 +75,12 @@ class CepticServer(CepticAbstraction):
         self.settings = settings
         CepticAbstraction.__init__(self)
         self.shouldExit = False
-        # set up basic terminal endpoints
-        self.terminalManager.add_endpoint("exit", lambda data: self.exit())
-        self.terminalManager.add_endpoint("clear", lambda data: self.clear())
-        self.terminalManager.add_endpoint("info", lambda data: self.info())
-        self.add_terminal_endpoints()
         # set up endpoints
         self.endpointManager = EndpointManager.server()
-        self.endpointManager.add_endpoint(CepticCommands.GET, "ping", self.ping_endpoint)
         self.add_endpoints()
         # set up certificate manager
         self.certificateManager = CertificateManager.server(config=certificate_config)
-
-    def start(self):
-        """
-        Start running server
-        :return: None
-        """
-        self.run()
-
-    def run(self):
-        """
-        Begin initialization of server
-        :return:
-        """
+        # initialize
         self.initialize()
 
     def initialize(self):
@@ -108,20 +90,18 @@ class CepticServer(CepticAbstraction):
         """
         # set up config
         self.certificateManager.generate_context_tls()
-        # initialize custom behavior
-        self.initialize_custom()
+
+    def start(self):
+        """
+        Start running server
+        :return: None
+        """
         # run processes
         self.run_processes()
 
-    def initialize_custom(self):
-        """
-        Override function to start custom behavior
-        """
-        pass
-
     def run_processes(self):
         """
-        Attempts to start user input thread and start the server loop
+        Attempts to start the server loop
         :return: None
         """
         try:
@@ -138,16 +118,6 @@ class CepticServer(CepticAbstraction):
             server_thread.daemon=True
             server_thread.start()
 
-    def info(self):  # display current configuration
-        """
-        Prints out info about current configuration
-        :return: None
-        """
-        print("-----------")
-        for key in sorted(self.settings):
-            print("{}: {}".format(key, self.settings[key]))
-        print("")
-
     def exit(self):
         """
         Properly begin to exit server; tells server loop to exit, performs clean_processes()
@@ -161,16 +131,6 @@ class CepticServer(CepticAbstraction):
         Alias for exit() function
         """
         self.exit()
-
-    @self.route("/ping",CepticCommands.GET)
-    def ping_endpoint(self, request):
-        """
-        Simple endpoint, returns PONG to client
-        :param s: SocketCeptic instance
-        :param data: additional data
-        :return: success state
-        """
-        return CepticResponse(200,"pong")
 
     def clean_processes(self):
         """
@@ -239,10 +199,10 @@ class CepticServer(CepticAbstraction):
             print("CertificateManagerException caught, connection terminated: {}".format(str(e)))
             return
         # wrap socket with SocketCeptic, to send length of message first
-        s = common.SocketCeptic(s)
+        s = SocketCeptic(s)
         # receive connection request
         client_request = s.recv(2048)
-        conn_req = json.loads(client_request, object_pairs_hook=common.decode_unicode_hook)
+        conn_req = json.loads(client_request, object_pairs_hook=decode_unicode_hook)
         # determine if good to go
         ready_to_go = True
         endpoint_function = None

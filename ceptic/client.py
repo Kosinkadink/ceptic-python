@@ -4,8 +4,9 @@ import os
 import socket
 
 from sys import version_info
-import ceptic.common as common
-from ceptic.common import CepticAbstraction, CepticSettings, CepticCommands
+from ceptic.network import SocketCeptic
+from ceptic.common import CepticAbstraction,CepticSettings,CepticCommands,decode_unicode_hook
+from ceptic.managers.endpointmanager import EndpointManager
 from ceptic.managers.certificatemanager import CertificateManager,CertificateManagerException,CertificateConfiguration
 
 
@@ -13,13 +14,12 @@ class CepticClientSettings(CepticSettings):
     """
     Class used to store client settings. Can be expanded upon by directly adding variables to settings dictionary
     """
-    def __init__(self, name="template", version="1.0.0", send_cache=409600, location=os.getcwd(), start_terminal=False):
+    def __init__(self, name="template", version="1.0.0", send_cache=409600, location=os.getcwd()):
         CepticSettings.__init__(self)
         self.settings["name"] = str(name)
         self.settings["version"] = str(version)
         self.settings["send_cache"] = int(send_cache)
         self.settings["location"] = str(location)
-        self.settings["start_terminal"] = boolean(start_terminal)
 
 
 class CepticClient(CepticAbstraction):
@@ -29,11 +29,6 @@ class CepticClient(CepticAbstraction):
         # initialize CepticAbstraction
         CepticAbstraction.__init__(self)
         self.shouldExit = False
-        # set up basic terminal endpoints
-        self.terminalManager.add_endpoint("exit", lambda data: self.exit())
-        self.terminalManager.add_endpoint("clear", lambda data: self.boot())
-        self.terminalManager.add_endpoint("help", lambda data: self.help())
-        self.add_terminal_endpoints()
         # set up endpoints
         self.endpointManager = EndpointManager.client()
         self.add_endpoints()
@@ -49,39 +44,6 @@ class CepticClient(CepticAbstraction):
         """
         # perform all tasks
         self.certificateManager.generate_context_tls()
-        # initialize custom behavior
-        self.initialize_custom()
-        # run processes
-        self.run_processes()
-
-    def initialize_custom(self):
-        """
-        Override function to start custom behavior
-        """
-        pass
-
-    def run_processes(self):
-        """
-        Attempts to start terminal wrapper if variable startTerminal is true
-        :return: None
-        """
-        if self.settings["start_terminal"]:
-            # now start terminal wrapper
-            self.terminal_wrapper()
-
-    def ping_terminal_endpoint(self, ip):
-        return self.connect_ip(ip, "ping", None)
-
-    def ping_endpoint(self, s, data=None, data_to_store=None):
-        """
-        Simple endpoint, sends pong to client
-        :param s: SocketCeptic instance
-        :param data: additional data to deliver to the server
-        :param data_to_store: additional data to NOT send to server but keep for local reference
-        :return: success state
-        """
-        received_msg = s.recv(4)
-        return {"status": 200, "msg": received_msg}
 
     def connect_ip(self, ip, type_name=None, endpoint=None, data=None, dataToStore=None):  # connect to ip
         """
@@ -157,34 +119,9 @@ class CepticClient(CepticAbstraction):
             s.close()
             return return_val
 
-    def boot(self):
-        self.clear()
-        print("{} Client started".format(self.settings["name"].capitalize()))
-        print("Version {}".format(self.settings["version"]))
-        print("Type help for endpoint list\n")
-
-    def help(self):
-        print("\nclear: clears screen")
-        print("exit: closes program")
-
-    def terminal_wrapper(self):
-        """
-        Wrapper for client input, loops waiting for user input
-        :return: None
-        """
-        self.boot()
-        while not self.shouldExit:
-            if version_info < (3,0): # python2 code
-                inp = raw_input(">")
-            else:
-                inp = input(">")
-            returned = self.service_terminal(inp)
-            if returned is not None:
-                print(returned)
-
     def exit(self):
         """
-        Properly begin to exit server; sets shouldExit to True, performs clean_processes()
+        Properly begin to exit client; sets shouldExit to True, performs clean_processes()
         :return: None
         """
         self.clean_processes()

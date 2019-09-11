@@ -3,6 +3,7 @@ from functools import wraps
 from ceptic.common import CepticException
 from ceptic.common import CepticCommands as Commands
 
+
 def get_decorator_client(func):
     @wraps(func)
     def decorated(*args, **kwargs):
