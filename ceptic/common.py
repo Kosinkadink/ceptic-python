@@ -2,7 +2,6 @@ import os
 import sys
 from sys import version_info
 
-# NOTE: "import ceptic.managers as managers" is found on bottom of file to work around circular import
 
 class CepticCommands(object):
     GET = "get"
@@ -42,11 +41,19 @@ class CepticStatusCode(object):
 
 class CepticResponse(object):
     def __init__(self, status, msg, stream=None):
-        self.status = status
+        self.status = int(status)
         self.msg = msg
         self.stream = stream
     def get_dict(self):
         return {"status":self.status, "msg":self.msg}
+    @staticmethod
+    def get_with_socket(s, max_msg_length):
+        status = int(s.recv(3))
+        msg = s.recv(max_msg_length)
+        return CepticResponse(status,msg)
+    def send_with_socket(self, s):
+        s.sendall('%3d' % self.status)
+        s.sendall(self.msg)
     def __repr__(self):
         return str(self.get_dict())
     def __str__(self):
@@ -54,11 +61,12 @@ class CepticResponse(object):
 
 
 class CepticRequest(object):
-    def __init__(self, headers=None,body=None,settings=None,command=None)
+    def __init__(self, command=None,endpoint=None,headers=None,body=None,settings=None)
+        self.command = command
+        self.endpoint = endpoint
         self.headers = headers
         self.body = body
         self.settings = settings
-        self.command = command
 
 
 class CepticSettings(object):
@@ -74,22 +82,6 @@ class CepticSettings(object):
         if default is None:
             return self.settings.pop(key)
         return self.settings.pop(key,default)
-
-
-class CepticAbstraction(object):
-    """
-    Object used to store common elements between CepticClient and CepticServer
-    """
-
-    def __init__(self):
-        self.endpointManager = managers.endpointmanager.EndpointManager()
-
-    def add_endpoint_commands(self):
-        """
-        Add additional endpoints here by overriding this function
-        :return: None
-        """
-        pass
 
 
 class CepticException(Exception):
@@ -279,6 +271,3 @@ def decode_unicode_hook(json_pairs):
             key = key.encode("utf-8")
         new_json_pairs.append((key, value))
     return dict(new_json_pairs)
-
-
-import ceptic.managers as managers

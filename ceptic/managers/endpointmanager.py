@@ -1,7 +1,7 @@
 import re
 from functools import wraps
-from ceptic.common import CepticException
-from ceptic.common import CepticCommands as Commands
+#from ceptic.common import CepticException
+#from ceptic.common import CepticCommands as Commands
 
 
 def get_decorator_client(func):
@@ -68,8 +68,8 @@ class EndpointServerManager(EndpointManager):
     def __init__(self):
         EndpointManager.__init__(self)
 
-    def add_command(self, command, decorator, settings):
-        self.commandMap[command] = [{},decorator,settings]
+    def add_command(self, command, command_func, settings):
+        self.commandMap[command] = [{},command_func,settings]
 
     def get_command(self, command):
         try:
@@ -163,8 +163,8 @@ class EndpointServerManager(EndpointManager):
             # check if endpoint already exists
             if endpoint in self.commandMap[comm][0]:
                 raise EndpointManagerException("endpoint '{}' for command '{}' already exists; endpoints for a command must be unique".format(endpoint,comm))
-            # store endpoint as key, [variable_names,handler] as value
-            self.commandMap[comm][0][endpoint] = [variable_names,handler]
+            # store endpoint as key, [handler, settings_override] as value
+            self.commandMap[comm][0][endpoint] = [handler,settings_override]
 
     def get_endpoint(self, command, endpoint):
         """
@@ -199,7 +199,7 @@ class EndpointServerManager(EndpointManager):
         if re.search(middle_slash_regex,endpoint) is not None:
             raise EndpointManagerException("endpoint definition cannot contain consecutive slashes: {}".format(endpoint))
         # search endpoint dict for matching endpoint
-        endpointMap,decorator = self.commandMap[command]
+        endpointMap,command_func,settings = self.commandMap[command]
         proper_endpoint_regex = None
         for endpoint_regex in endpointMap:
             if re.search(endpoint_regex,endpoint) is not None:
@@ -209,11 +209,10 @@ class EndpointServerManager(EndpointManager):
         if proper_endpoint_regex is None:
             raise EndpointManagerException("endpoint '{}' cannot be found for command '{}'".format(endpoint,command))
         # otherwise get variable names and handler function
-        variable_names,handler = endpointMap[proper_endpoint_regex]
+        handler,settings_override = endpointMap[proper_endpoint_regex]
         variable_dict = re.match(proper_endpoint_regex,endpoint).groupdict()
-        print(variable_dict)
-        # return decorated handler and variable_dict
-        #return (decorator(handler),variable_dict)
+        # return command function, endpoint handler, variable_dict, settings, and settings_override
+        return command_func,handler,variable_dict,settings,settings_override
 
     def remove_endpoint(self, command, endpoint):
         """
@@ -229,7 +228,7 @@ class EndpointServerManager(EndpointManager):
         except IndexError as e:
             return None
 
-class EndpointManagerException(CepticException):
+class EndpointManagerException(Exception):#CepticException):
     pass
 
 if __name__=="__main__":
@@ -244,12 +243,12 @@ if __name__=="__main__":
     manager.add_endpoint(command="get",endpoint="robots/",handler=None)
     manager.add_endpoint(command="get",endpoint="/",handler=None)
     for key in manager.commandMap:
-        endpointDict,func = manager.commandMap[key]
+        endpointDict,func,settings = manager.commandMap[key]
         print("Command: {}, Func: {}".format(key,func))
         for endpoint in endpointDict:
-            variables,handler = endpointDict[endpoint]
-            print("    {}\n        {}\n        {}".format(endpoint,variables,handler))
-    print("Getting Endpoint")
-    manager.get_endpoint(command="get",endpoint="/robots/robot1/settings/setting1")
-    manager.get_endpoint(command="get",endpoint="/robots/robot1/settings/")
-    manager.get_endpoint(command="get",endpoint="/robots/")
+            handler,settings_override = endpointDict[endpoint]
+            print("    {}\n        {}\n        {}".format(endpoint,settings_override,handler))
+    print("Getting Endpoints")
+    print(manager.get_endpoint(command="get",endpoint="/robots/robot1/settings/setting1"))
+    print(manager.get_endpoint(command="get",endpoint="/robots/robot1/settings/"))
+    print(manager.get_endpoint(command="get",endpoint="/robots/"))
