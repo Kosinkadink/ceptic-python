@@ -22,6 +22,11 @@ class CepticClientSettings(CepticSettings):
         self.settings["headers_max_size"] = int(headers_max_size)
 
 
+def generate_client_command_settings():
+    #TODO: fill this out
+    pass
+
+
 def wrap_client_command(func):
     """
     Decorator for server-side commands
@@ -42,6 +47,12 @@ def wrap_client_command(func):
                 s.close()
                 return response
     return decorator_client_command
+
+
+@wrap_client_command
+def get_client_command(s, request):
+    response = CepticResponse.get_with_socket(s,request.settings["maxMsgSize"])
+    return response
 
 
 class CepticClient(object):

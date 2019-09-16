@@ -32,8 +32,8 @@ class EndpointClientManager(EndpointManager):
     def __init__(self):
         EndpointManager.__init__(self)
 
-    def add_command(self, command, func):
-        self.commandMap.setdefault(command,func)
+    def add_command(self, command, func, settings):
+        self.commandMap[command] = [func,settings]
 
     def get_command(self, command):
         """
@@ -42,8 +42,8 @@ class EndpointClientManager(EndpointManager):
         :return: function object to be used
         """
         try:
-            func = self.commandMap[command]
-            return func
+            func,settings = self.commandMap[command]
+            return func,settings
         except KeyError as e:
             return None
         except IndexError as e:

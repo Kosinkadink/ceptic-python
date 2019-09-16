@@ -9,7 +9,7 @@ import copy
 
 from sys import version_info
 from ceptic.network import SocketCeptic
-from ceptic.common import CepticRequest,CepticSettings,CepticCommands,CepticResponse
+from ceptic.common import CepticRequest,CepticSettings,CepticCommands,CepticResponse,CepticException
 from ceptic.managers.endpointmanager import EndpointManager
 from ceptic.managers.certificatemanager import CertificateManager,CertificateManagerException,CertificateConfiguration
 
@@ -32,6 +32,11 @@ class CepticServerSettings(CepticSettings):
         self.settings["verbose"] = boolean(verbose)
 
 
+def generate_server_command_settings():
+    #TODO: fill this out
+    pass
+
+
 def wrap_server_command(func):
     """
     Decorator for server-side commands
@@ -51,10 +56,23 @@ def wrap_server_command(func):
             # receive alloted amount of bytes
             body = s.recv(request.headers["Content-Length"])
         # perform command function with appropriate params
-        func(s,request,endpoint_func,endpoint_dict)
+        try:
+            func(s,request,endpoint_func,endpoint_dict)
+        except Exception as e:
+            pass
         # close connection
         s.close()
     return decorator_server_command
+
+
+@wrap_server_command
+def get_server_command(s, request, endpoint_func, endpoint_dict):
+    response = endpoint_func(request,**endpoint_dict)
+    if not isinstance(response,CepticResponse):
+        errorResponse = CepticResponse(500,"endpoint returned invalid data type '{}'' on server".format(type(response)))
+        errorResponse.send_with_socket(s)
+        raise CepticException("expected endpoint_func to return CepticResponse instance, but returned '{}' instead".format(type(response)))
+    response.send_with_socket(s)
 
 
 class CepticServer(object):
@@ -188,7 +206,8 @@ class CepticServer(object):
             s.sendall("y")
             # merge settings
             settings_merged = copy.deepcopy(settings)
-            settings_merged.update(settings_override)
+            if settings_override is not None:
+                settings_merged.update(settings_override)
             # create request object
             request = CepticRequest(command=command,endpoint=endpoint,headers=headers,settings=None)
             command_func(s,request,handler,variable_dict)
