@@ -73,25 +73,25 @@ class CepticClient(object):
         self.endpointManager.add_command(
             "get",
             basic_client_command,
-            create_command_settings(msgMaxLength=2048000000,maxBodyLength=2048000000)
+            create_command_settings(maxMsgLength=2048000000,maxBodyLength=2048000000)
             )
         # add post command
         self.endpointManager.add_command(
             "post",
             basic_client_command,
-            create_command_settings(msgMaxLength=2048000000,maxBodyLength=2048000000)
+            create_command_settings(maxMsgLength=2048000000,maxBodyLength=2048000000)
             )
         # add update command
         self.endpointManager.add_command(
             "update",
             basic_client_command,
-            create_command_settings(msgMaxLength=2048000000,maxBodyLength=2048000000)
+            create_command_settings(maxMsgLength=2048000000,maxBodyLength=2048000000)
             )
         # add delete command
         self.endpointManager.add_command(
             "delete",
             basic_client_command,
-            create_command_settings(msgMaxLength=2048000000,maxBodyLength=2048000000)
+            create_command_settings(maxMsgLength=2048000000,maxBodyLength=2048000000)
             )
 
     def verify_request(command, endpoint, headers):
