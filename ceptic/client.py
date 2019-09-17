@@ -5,26 +5,19 @@ import socket
 
 from sys import version_info
 from ceptic.network import SocketCeptic
-from ceptic.common import CepticStatusCode,CepticResponse,CepticRequest,CepticSettings,CepticCommands,decode_unicode_hook
+from ceptic.common import CepticStatusCode,CepticResponse,CepticRequest,CepticCommands
+from ceptic.common import create_command_settings,decode_unicode_hook
 from ceptic.managers.endpointmanager import EndpointManager
 from ceptic.managers.certificatemanager import CertificateManager,CertificateManagerException,CertificateConfiguration
 
 
-class CepticClientSettings(CepticSettings):
-    """
-    Class used to store client settings. Can be expanded upon by directly adding variables to settings dictionary
-    """
-    def __init__(self, name="template", version="1.0.0", send_cache=409600, headers_max_size=1024000):
-        CepticSettings.__init__(self)
-        self.settings["name"] = str(name)
-        self.settings["version"] = str(version)
-        self.settings["send_cache"] = int(send_cache)
-        self.settings["headers_max_size"] = int(headers_max_size)
-
-
-def generate_client_command_settings():
-    #TODO: fill this out
-    pass
+def create_client_settings(name="template", version="1.0.0", send_cache=409600, headers_max_size=1024000):
+    settings = {}
+    settings["name"] = str(name)
+    settings["version"] = str(version)
+    settings["send_cache"] = int(send_cache)
+    settings["headers_max_size"] = int(headers_max_size)
+    return settings
 
 
 def wrap_client_command(func):
@@ -50,8 +43,8 @@ def wrap_client_command(func):
 
 
 @wrap_client_command
-def get_client_command(s, request):
-    response = CepticResponse.get_with_socket(s,request.settings["maxMsgSize"])
+def basic_client_command(s, request):
+    response = CepticResponse.get_with_socket(s,request.settings["maxMsgLength"])
     return response
 
 
@@ -74,8 +67,32 @@ class CepticClient(object):
         Initialize client configuration and processes
         :return: None
         """
-        # perform all tasks
+        # set up certificateManager context
         self.certificateManager.generate_context_tls()
+        # add get command
+        self.endpointManager.add_command(
+            "get",
+            basic_client_command,
+            create_command_settings(msgMaxLength=2048000000,maxBodyLength=2048000000)
+            )
+        # add post command
+        self.endpointManager.add_command(
+            "post",
+            basic_client_command,
+            create_command_settings(msgMaxLength=2048000000,maxBodyLength=2048000000)
+            )
+        # add update command
+        self.endpointManager.add_command(
+            "update",
+            basic_client_command,
+            create_command_settings(msgMaxLength=2048000000,maxBodyLength=2048000000)
+            )
+        # add delete command
+        self.endpointManager.add_command(
+            "delete",
+            basic_client_command,
+            create_command_settings(msgMaxLength=2048000000,maxBodyLength=2048000000)
+            )
 
     def verify_request(command, endpoint, headers):
         # verify command is of proper length and exists in endpoint manager

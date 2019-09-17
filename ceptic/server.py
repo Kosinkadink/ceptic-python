@@ -9,32 +9,25 @@ import copy
 
 from sys import version_info
 from ceptic.network import SocketCeptic
-from ceptic.common import CepticRequest,CepticSettings,CepticCommands,CepticResponse,CepticException
+from ceptic.common import CepticRequest,CepticCommands,CepticResponse,CepticException
+from ceptic.common import create_command_settings,decode_unicode_hook
 from ceptic.managers.endpointmanager import EndpointManager
 from ceptic.managers.certificatemanager import CertificateManager,CertificateManagerException,CertificateConfiguration
 
 
-class CepticServerSettings(CepticSettings):
-    """
-    Class used to store server settings. Can be expanded upon by directly adding variables to settings dictionary
-    """
-    def __init__(self, port=9000, name="template", version="1.0.0", send_cache=409600, headers_max_size=1024000, block_on_start=False, use_processes=False, max_parallel_count=1, request_queue_size=10, verbose=False):
-        CepticSettings.__init__(self)
-        self.settings["port"] = int(port)
-        self.settings["name"] = str(name)
-        self.settings["version"] = str(version)
-        self.settings["send_cache"] = int(send_cache)
-        self.settings["headers_max_size"] = int(headers_max_size)
-        self.settings["block_on_start"] = boolean(block_on_start)
-        self.settings["use_processes"] = boolean(use_processes)
-        self.settings["max_parallel_count"] = int(max_parallel_count)
-        self.settings["request_queue_size"] = int(request_queue_size)
-        self.settings["verbose"] = boolean(verbose)
-
-
-def generate_server_command_settings():
-    #TODO: fill this out
-    pass
+def create_server_settings(port=9000, name="template", version="1.0.0", send_cache=409600, headers_max_size=1024000, block_on_start=False, use_processes=False, max_parallel_count=1, request_queue_size=10, verbose=False)
+    settings = {}
+    settings["port"] = int(port)
+    settings["name"] = str(name)
+    settings["version"] = str(version)
+    settings["send_cache"] = int(send_cache)
+    settings["headers_max_size"] = int(headers_max_size)
+    settings["block_on_start"] = boolean(block_on_start)
+    settings["use_processes"] = boolean(use_processes)
+    settings["max_parallel_count"] = int(max_parallel_count)
+    settings["request_queue_size"] = int(request_queue_size)
+    settings["verbose"] = boolean(verbose)
+    return settings
 
 
 def wrap_server_command(func):
@@ -66,7 +59,7 @@ def wrap_server_command(func):
 
 
 @wrap_server_command
-def get_server_command(s, request, endpoint_func, endpoint_dict):
+def basic_server_command(s, request, endpoint_func, endpoint_dict):
     response = endpoint_func(request,**endpoint_dict)
     if not isinstance(response,CepticResponse):
         errorResponse = CepticResponse(500,"endpoint returned invalid data type '{}'' on server".format(type(response)))
@@ -95,6 +88,30 @@ class CepticServer(object):
         """
         # set up config
         self.certificateManager.generate_context_tls()
+        # add get command
+        self.endpointManager.add_command(
+            "get",
+            basic_server_command,
+            create_command_settings(msgMaxLength=2048000000,maxBodyLength=2048000000)
+            )
+        # add post command
+        self.endpointManager.add_command(
+            "get",
+            basic_server_command,
+            create_command_settings(msgMaxLength=2048000000,maxBodyLength=2048000000)
+            )
+        # add update command
+        self.endpointManager.add_command(
+            "get",
+            basic_server_command,
+            create_command_settings(msgMaxLength=2048000000,maxBodyLength=2048000000)
+            )
+        # add delete command
+        self.endpointManager.add_command(
+            "get",
+            basic_server_command,
+            create_command_settings(msgMaxLength=2048000000,maxBodyLength=2048000000)
+            )
 
     def start(self):
         """

@@ -3,6 +3,16 @@ import sys
 from sys import version_info
 
 
+def create_command_settings(maxMsgLength=2048000000,maxBodyLength=2048000000):
+    """
+    Generates dictionary with command settings
+    """
+    settings = {}
+    settings["maxMsgLength"] = int(maxMsgLength)
+    settings["maxBodyLength"] = int(maxBodyLength)
+    return settings
+
+
 class CepticCommands(object):
     GET = "get"
     POST = "post"
@@ -67,21 +77,6 @@ class CepticRequest(object):
         self.headers = headers
         self.body = body
         self.settings = settings
-
-
-class CepticSettings(object):
-    def __init__(self):
-        self.settings = dict()
-    def __getitem__(self, key):
-        return self.settings[key]
-    def __setitem__(self, key, value):
-        self.settings[key] = value
-    def __delitem__(self, key):
-        del self.settings[key]
-    def pop(self,key,default=None):
-        if default is None:
-            return self.settings.pop(key)
-        return self.settings.pop(key,default)
 
 
 class CepticException(Exception):
