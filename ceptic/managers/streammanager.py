@@ -3,7 +3,8 @@ import threading
 from time import time
 from sys import version_info
 from collections import deque
-from ceptic.common import CepticException, select_ceptic
+from ceptic.common import CepticException
+from ceptic.network import select_ceptic
 
 
 class StreamManagerException(CepticException):

@@ -71,7 +71,7 @@ class CepticResponse(object):
 
 
 class CepticRequest(object):
-    def __init__(self, command=None,endpoint=None,headers=None,body=None,settings=None)
+    def __init__(self, command=None,endpoint=None,headers=None,body=None,settings=None):
         self.command = command
         self.endpoint = endpoint
         self.headers = headers

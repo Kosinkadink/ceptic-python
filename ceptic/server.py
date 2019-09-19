@@ -15,18 +15,18 @@ from ceptic.managers.endpointmanager import EndpointManager
 from ceptic.managers.certificatemanager import CertificateManager,CertificateManagerException,CertificateConfiguration
 
 
-def create_server_settings(port=9000, name="template", version="1.0.0", send_cache=409600, headers_max_size=1024000, block_on_start=False, use_processes=False, max_parallel_count=1, request_queue_size=10, verbose=False)
+def create_server_settings(port=9000, name="template", version="1.0.0", send_cache=409600, headers_max_size=1024000, block_on_start=False, use_processes=False, max_parallel_count=1, request_queue_size=10, verbose=False):
     settings = {}
     settings["port"] = int(port)
     settings["name"] = str(name)
     settings["version"] = str(version)
     settings["send_cache"] = int(send_cache)
     settings["headers_max_size"] = int(headers_max_size)
-    settings["block_on_start"] = boolean(block_on_start)
-    settings["use_processes"] = boolean(use_processes)
+    settings["block_on_start"] = bool(block_on_start)
+    settings["use_processes"] = bool(use_processes)
     settings["max_parallel_count"] = int(max_parallel_count)
     settings["request_queue_size"] = int(request_queue_size)
-    settings["verbose"] = boolean(verbose)
+    settings["verbose"] = bool(verbose)
     return settings
 
 
@@ -72,7 +72,6 @@ class CepticServer(object):
 
     def __init__(self, settings, certificate_config=None):
         self.settings = settings
-        CepticAbstraction.__init__(self)
         self.shouldExit = False
         # set up endpoint manager
         self.endpointManager = EndpointManager.server()

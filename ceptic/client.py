@@ -2,6 +2,7 @@ import getopt
 import json
 import os
 import socket
+import functools
 
 from sys import version_info
 from ceptic.network import SocketCeptic
@@ -52,8 +53,6 @@ class CepticClient(object):
 
     def __init__(self, settings, certificate_config=None):
         self.settings = settings
-        # initialize CepticAbstraction
-        CepticAbstraction.__init__(self)
         self.shouldExit = False
         # set up endpoint manager
         self.endpointManager = EndpointManager.client()
@@ -98,7 +97,7 @@ class CepticClient(object):
         # verify command is of proper length and exists in endpoint manager
         if not command:
             raise ValueError("command must be provided")
-        if len(command) > 128  
+        if len(command) > 128:
             raise ValueError("command must be less than 128 char long")
         if not self.endpointManager.get_command(command):
             raise ValueError("command '{}' cannot be found in endpoint manager".format(command))

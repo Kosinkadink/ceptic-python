@@ -8,7 +8,7 @@ class CertificateConfiguration(object):
     Stores certificate info used to initialize CertificateManager
     """
 
-    def __init__(self, certfile=None, keyfile=None, cafile=None, client_verify=True, check_hostname=True, secure=True):
+    def __init__(self, certfile=None, keyfile=None, cafile=None, check_hostname=True, secure=True):
         """
         Choose CertificateManager settings
         :param certfile: path of certfile - contains public key
@@ -22,7 +22,6 @@ class CertificateConfiguration(object):
         self.certfile = certfile
         self.keyfile = keyfile
         self.cafile = cafile
-        self.client_verify = client_verify
         self.check_hostname = check_hostname
         self.secure = secure
 
@@ -52,11 +51,11 @@ class CertificateManager(object):
 
     @classmethod
     def client(cls, config=None):
-        return cls(self.CLIENT, config)
+        return cls(cls.CLIENT, config)
 
     @classmethod
     def server(cls, config=None):
-        return cls(self.SERVER, config)
+        return cls(cls.SERVER, config)
 
     def assign_request_type(self, request):
         if request in [self.SERVER, self.CLIENT]:
@@ -92,17 +91,24 @@ class CertificateManager(object):
         Generate context for a client implementation
         :return: None
         """
-        # if config is provided, replace currently stored one
+        # if config is provided here, replace currently stored one
         if config is not None:
             self.config = config
+        # if no config at all in manager, assume no security to be provided
+        if self.config is None:
+            self.config = CertificateConfiguration(secure=False)
+        # if config is set to not be secure, do not attempt to create a context
+        if not self.config.secure:
+            return
         # create SSL/TLS context from provided files
         self.context = ssl.create_default_context()
         # only load client cert + key if client verification is requested
-        if self.client_verify:
+        if self.config.certfile is not None and self.config.keyfile is not None:
             self.context.load_cert_chain(certfile=self.config.certfile,
                                          keyfile=self.config.keyfile)
         self.context.check_hostname = self.config.check_hostname
-        self.context.load_verify_locations(cafile=self.config.cafile)
+        if self.config.cafile is not None:
+            self.context.load_verify_locations(cafile=self.config.cafile)
 
     def generate_context_server(self, config=None):
         """
@@ -112,12 +118,18 @@ class CertificateManager(object):
         # if config is provided, replace currently stored one
         if config is not None:
             self.config = config
+        # if no config at all in manager, assume no security requested
+        if self.config is None:
+            self.config = CertificateConfiguration(secure=False)
+        # if config is set to not be secure, do not attempt to create a context
+        if not self.config.secure:
+            return
         # create SSL/TLS context from provided files
         self.context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         self.context.load_cert_chain(certfile=self.config.certfile,
                                      keyfile=self.config.keyfile)
         # only check certs if client verification is requested
-        if self.config.client_verify:
+        if self.config.cafile is not None:
             self.context.load_verify_locations(cafile=self.config.cafile)
             self.context.verify_mode = ssl.CERT_REQUIRED
 
