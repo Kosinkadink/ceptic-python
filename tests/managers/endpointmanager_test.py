@@ -192,6 +192,8 @@ def test_server_add_endpoint_good_endpoints():
     # there can be multiple braces between slashes as long as they are not consecutive
     good_endpoints.append("<good>.<braces>")
     good_endpoints.append("<good>good<braces>")
+    # variable name can start with underscore
+    good_endpoints.append("<_underscore>/in/variable/name")
     # all good endpoints should NOT raise exception
     for good_endpoint in good_endpoints:
         try:
@@ -200,7 +202,7 @@ def test_server_add_endpoint_good_endpoints():
                                  handler=endpoint_handler,
                                  settings_override=None)
         except EndpointManagerException as e:
-            pytest.fail("Raised exception '{}' for endpoint: {}".format(str(e),good_endpoint))
+            pytest.fail("Raised EndpointManagerException '{}' for endpoint: {}".format(str(e),good_endpoint))
 
 
 
@@ -233,6 +235,8 @@ def test_server_add_endpoint_bad_endpoint():
     bad_endpoints.append("unmatched/<b<race>s>")
     # braces cannot be placed directly adjacent to each other
     bad_endpoints.append("multiple/<unslashed><braces>")
+    # variable name in braces cannot start with a number
+    bad_endpoints.append("starts/<1withnumber>")
     # all bad endpoints should raise exception
     for bad_endpoint in bad_endpoints:
         try:
@@ -245,17 +249,30 @@ def test_server_add_endpoint_bad_endpoint():
         else:
             pytest.fail("Did NOT raise EndpointManagerException for endpoint: {}".format(bad_endpoint))    
 
-# TODO: finish get_endpoint and remove_endpoint tests
+# TODO: finish get_endpoint_* and remove_endpoint tests
 def test_server_get_endpoint():
     manager = EndpointManager.server()
     helper_add_test_command_to_EndpointServerManager(manager,"get")
     def endpoint_handler():
         pass
     manager.add_endpoint(command="get",
-                             endpoint="/",
-                             handler=endpoint_handler,
-                             settings_override=None)
+                         endpoint="/",
+                         handler=endpoint_handler,
+                         settings_override=None)
+    command_func,handler,variable_dict,settings,settings_override = manager.get_endpoint("get","/")
+    assert handler is endpoint_handler
+    assert len(variable_dict) == 0
+    assert settings is not None
+    assert settings_override is None
 
+def test_server_get_endpoint_valid_query_but_does_not_exist():
+	manager = EndpointManager.server()
+	helper_add_test_command_to_EndpointServerManager(manager,"get")
+
+
+def test_server_get_endpoint_invalid_query():
+	manager = EndpointManager.server()
+	helper_add_test_command_to_EndpointServerManager(manager,"get")
 # END TESTS
 
 

@@ -112,7 +112,7 @@ class EndpointServerManager(EndpointManager):
         # non-matching braces, no content between braces, slash between braces, or multiple braces without slash
         bad_braces_regex = '\<[^\>]*\<|\>[^\<]*\>|\<[^\>]+$|^[^\<]+\>|\<\>|\<([^/][^\>]*/[^/][^\>]*)+\>|\>\<'
         braces_regex = '<[^>]*>' # find variables in endpoint
-        replacement_regex = '[!-~][^/]+' # printable ASCII characters; not actually executed here
+        replacement_regex = '[!-\[\]-~]+' # printable ASCII characters; not actually executed here
         # check that endpoint is not empty
         if not endpoint:
             raise EndpointManagerException("endpoint definition cannot be empty")
@@ -177,7 +177,7 @@ class EndpointServerManager(EndpointManager):
         if command not in self.commandMap:
             raise EndpointManagerException("command '{}' not found".format(command))
         # regex strings
-        allowed_regex = "^[!-~][^\\\\]+$"
+        allowed_regex = "^[!-\[\]-~]+$"
         start_slash_regex = '^/{2,}' # 2 or more slashes at start
         end_slash_regex = '/+$' # slashes at end
         middle_slash_regex = '/{2,}' # 2 or more slashes next to each other
@@ -207,7 +207,7 @@ class EndpointServerManager(EndpointManager):
                 break
         # if nothing found, endpoint doesn't exist
         if proper_endpoint_regex is None:
-            raise EndpointManagerException("endpoint '{}' cannot be found for command '{}'".format(endpoint,command))
+            raise KeyError("endpoint '{}' cannot be found for command '{}'".format(endpoint,command))
         # otherwise get variable names and handler function
         handler,settings_override = endpointMap[proper_endpoint_regex]
         variable_dict = re.match(proper_endpoint_regex,endpoint).groupdict()
