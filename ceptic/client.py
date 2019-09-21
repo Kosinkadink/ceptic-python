@@ -9,12 +9,11 @@ from ceptic.network import SocketCeptic
 from ceptic.common import CepticStatusCode,CepticResponse,CepticRequest,CepticCommands
 from ceptic.common import create_command_settings,decode_unicode_hook
 from ceptic.managers.endpointmanager import EndpointManager
-from ceptic.managers.certificatemanager import CertificateManager,CertificateManagerException,CertificateConfiguration
+from ceptic.managers.certificatemanager import CertificateManager,CertificateManagerException,create_ssl_config
 
 
-def create_client_settings(name="template", version="1.0.0", send_cache=409600, headers_max_size=1024000):
+def create_client_settings(version="1.0.0", send_cache=409600, headers_max_size=1024000):
     settings = {}
-    settings["name"] = str(name)
     settings["version"] = str(version)
     settings["send_cache"] = int(send_cache)
     settings["headers_max_size"] = int(headers_max_size)
@@ -51,13 +50,13 @@ def basic_client_command(s, request):
 
 class CepticClient(object):
 
-    def __init__(self, settings, certificate_config=None):
+    def __init__(self, settings, ssl_config=None):
         self.settings = settings
         self.shouldExit = False
         # set up endpoint manager
         self.endpointManager = EndpointManager.client()
         # set up certificate manager
-        self.certificateManager = CertificateManager.client(config=certificate_config)
+        self.certificateManager = CertificateManager.client(ssl_config=ssl_config)
         # do initialization
         self.initialize()
 

@@ -1,7 +1,7 @@
 import re
 from functools import wraps
-#from ceptic.common import CepticException
-#from ceptic.common import CepticCommands as Commands
+from ceptic.common import CepticException
+from ceptic.common import CepticCommands as Commands
 
 
 def get_decorator_client(func):
@@ -42,21 +42,18 @@ class EndpointClientManager(EndpointManager):
         :return: function object to be used
         """
         try:
-            func,settings = self.commandMap[command]
-            return func,settings
+            return self.commandMap[command]
         except KeyError as e:
-            return None
-        except IndexError as e:
-            return None
+            raise e
 
     def remove_command(self, command):
         """
         Remove command from manager; returns removed endpoint or None if does not exist
         :param command: string
-        :return: either removed endpoint or None
+        :return: None
         """
         try:
-            return self.commandMap.pop(command)
+            self.commandMap.pop(command)
         except KeyError as e:
             return None
 
@@ -75,7 +72,7 @@ class EndpointServerManager(EndpointManager):
         try:
             return self.commandMap[command]
         except KeyError as e:
-            return None
+            raise e
 
     def remove_command(self, command):
         """
@@ -83,7 +80,10 @@ class EndpointServerManager(EndpointManager):
         :param command: string
         :return: either removed endpoint or None
         """
-        return self.commandMap.pop(command)
+        try:
+            self.commandMap.pop(command)
+        except KeyError as e:
+            return None
 
     def add_endpoint(self, command, endpoint, handler, settings_override=None):
         """
@@ -222,13 +222,13 @@ class EndpointServerManager(EndpointManager):
         :return: either removed endpoint or None
         """
         try:
-            return self.commandMap[command][0].pop(endpoint)
+            self.commandMap[command][0].pop(endpoint)
         except KeyError as e:
             return None
         except IndexError as e:
             return None
 
-class EndpointManagerException(Exception):#CepticException):
+class EndpointManagerException(CepticException):
     pass
 
 if __name__=="__main__":

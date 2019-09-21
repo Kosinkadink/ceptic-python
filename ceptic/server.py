@@ -12,13 +12,12 @@ from ceptic.network import SocketCeptic
 from ceptic.common import CepticRequest,CepticCommands,CepticResponse,CepticException
 from ceptic.common import create_command_settings,decode_unicode_hook
 from ceptic.managers.endpointmanager import EndpointManager
-from ceptic.managers.certificatemanager import CertificateManager,CertificateManagerException,CertificateConfiguration
+from ceptic.managers.certificatemanager import CertificateManager,CertificateManagerException,create_ssl_config
 
 
-def create_server_settings(port=9000, name="template", version="1.0.0", send_cache=409600, headers_max_size=1024000, block_on_start=False, use_processes=False, max_parallel_count=1, request_queue_size=10, verbose=False):
+def create_server_settings(port=9000, version="1.0.0", send_cache=409600, headers_max_size=1024000, block_on_start=False, use_processes=False, max_parallel_count=1, request_queue_size=10, verbose=False):
     settings = {}
     settings["port"] = int(port)
-    settings["name"] = str(name)
     settings["version"] = str(version)
     settings["send_cache"] = int(send_cache)
     settings["headers_max_size"] = int(headers_max_size)
@@ -70,13 +69,13 @@ def basic_server_command(s, request, endpoint_func, endpoint_dict):
 
 class CepticServer(object):
 
-    def __init__(self, settings, certificate_config=None):
+    def __init__(self, settings, ssl_config=None):
         self.settings = settings
         self.shouldExit = False
         # set up endpoint manager
         self.endpointManager = EndpointManager.server()
         # set up certificate manager
-        self.certificateManager = CertificateManager.server(config=certificate_config)
+        self.certificateManager = CertificateManager.server(ssl_config=ssl_config)
         # initialize
         self.initialize()
 
@@ -112,7 +111,7 @@ class CepticServer(object):
             create_command_settings(maxMsgLength=2048000000,maxBodyLength=2048000000)
             )
 
-    def start(self):
+    def run(self):
         """
         Start running server
         :return: None
@@ -145,8 +144,8 @@ class CepticServer(object):
         :param delay_time: time to wait for a connection before repeating, default is 0.1 seconds
         :return: None
         """
-        if self.settings["verbose"]: print('{} server started - version {} on port {}'.format(
-            self.settings["scriptname"], self.settings["version"], self.settings["serverport"]))
+        if self.settings["verbose"]: print('ceptic server started - version {} on port {}'.format(
+            self.settings["version"], self.settings["port"]))
         # create a socket object
         serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         #serversocket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
@@ -216,7 +215,7 @@ class CepticServer(object):
             command_func,handler,variable_dict,settings,settings_override = self.endpointManager.get_endpoint(command,endpoint)
         except KeyError as e:
             ready_to_go = False
-            responses.setdefault("errors", []).append("endpoint of type {} not recognized: {}".format(command,endpoint))
+            errors.setdefault("errors", []).append("endpoint of type {} not recognized: {}".format(command,endpoint))
         # if ready to go, send confirmation and continue
         if ready_to_go:
             s.sendall("y")

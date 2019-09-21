@@ -3,27 +3,25 @@ import ssl
 from ceptic.common import CepticException
 
 
-class CertificateConfiguration(object):
+def create_ssl_config(certfile=None, keyfile=None, cafile=None, check_hostname=True, secure=True, ssl_context=None):
     """
-    Stores certificate info used to initialize CertificateManager
+    Choose CertificateManager settings
+    :param certfile: path of certfile - contains public key
+    :param keyfile: path of keyfile - contains private key
+    :param cafile: path of cafile - contains public key of other end of connection
+    :param check_hostname: boolean corresponding to if client should check hostname of server-submitted certificate
+    :param secure: boolean corresponding to if CertificateManager should secure socket; unless specifically desired, it is RECOMMENDED this is kept true.
+    If set to false, any certificates provided will be ignored, no wrapping will occur if wrapping function is called
+    :param ssl_context: 
     """
-
-    def __init__(self, certfile=None, keyfile=None, cafile=None, check_hostname=True, secure=True):
-        """
-        Choose CertificateManager settings
-        :param certfile: path of certfile - contains public key
-        :param keyfile: path of keyfile - contains private key
-        :param cafile: path of cafile - contains public key of other end of connection
-        :param client_verify: boolean corresponding to if client verification is required
-        :param check_hostname: boolean corresponding to if client should check hostname of server-submitted certificate
-        :param secure: boolean corresponding to if CertificateManager should secure socket; unless specifically desired, it is RECOMMENDED this is kept true.
-        If set to false, any certificates provided will be ignored, no wrapping will occur if wrapping function is called
-        """
-        self.certfile = certfile
-        self.keyfile = keyfile
-        self.cafile = cafile
-        self.check_hostname = check_hostname
-        self.secure = secure
+    settings = {}
+    settings["certfile"] = certfile
+    settings["keyfile"] = keyfile
+    settings["cafile"] = cafile
+    settings["check_hostname"] = check_hostname
+    settings["secure"] = secure
+    settings["ssl_context"] = ssl_context
+    return settings
 
 
 class CertificateManager(object):
@@ -34,28 +32,29 @@ class CertificateManager(object):
     CLIENT = "__CLIENT"
     REQUEST = None
 
-    def __init__(self, request, config=None):
+    def __init__(self, request, ssl_config=None):
         """
         Provide requester type and certificate information
         :param request: string representing type (CertificateManager.SERVER or CertificateManager.CLIENT)
-        :param config: CertificateConfiguration with desired settings
+        :param ssl_config: CertificateConfiguration with desired settings
         """
-        self.context = None
+        self.ssl_context = None
         self.show_warnings = True
         self.REQUEST_MAP = {
             self.SERVER: self.generate_context_server,
             self.CLIENT: self.generate_context_client
         }
         self.generate_context_tls = self.assign_request_type(request)
-        self.config = config
+        self.ssl_config = ssl_config
+        self.secure = True
 
     @classmethod
-    def client(cls, config=None):
-        return cls(cls.CLIENT, config)
+    def client(cls, ssl_config=None):
+        return cls(cls.CLIENT, ssl_config)
 
     @classmethod
-    def server(cls, config=None):
-        return cls(cls.SERVER, config)
+    def server(cls, ssl_config=None):
+        return cls(cls.SERVER, ssl_config)
 
     def assign_request_type(self, request):
         if request in [self.SERVER, self.CLIENT]:
@@ -70,12 +69,12 @@ class CertificateManager(object):
         :param socket: some pure socket
         :return: socket wrapped in SSL/TLS
         """
-        if self.context is None:
+        if self.ssl_context is None:
             self.generate_context_tls()
         is_server_side = self.REQUEST == self.SERVER
-        if self.config.secure:
+        if self.ssl_config["secure"]:
             try:
-                return self.context.wrap_socket(socket, server_side=is_server_side)
+                return self.ssl_context.wrap_socket(socket, server_side=is_server_side)
             except ssl.SSLError as e:
                 raise CertificateManagerException(str(e))
         else:
@@ -83,55 +82,67 @@ class CertificateManager(object):
                 print("WARNING: 'secure' is set to false and no wrapping has occured; your socket is NOT secure. If this is not desired, reconfigure manager with CertificateConfiguration with 'secure' set to True")
             return socket
 
-    def generate_context_tls(self, config=None):
+    def generate_context_tls(self, ssl_config=None):
         pass
 
-    def generate_context_client(self, config=None):
+    def generate_context_client(self, ssl_config=None):
         """
         Generate context for a client implementation
         :return: None
         """
-        # if config is provided here, replace currently stored one
-        if config is not None:
-            self.config = config
-        # if no config at all in manager, assume no security to be provided
-        if self.config is None:
-            self.config = CertificateConfiguration(secure=False)
-        # if config is set to not be secure, do not attempt to create a context
-        if not self.config.secure:
+        # if ssl_config is provided here, replace currently stored one
+        if ssl_config is not None:
+            self.ssl_config = ssl_config
+        # if no ssl_config at all in manager, assume no security to be provided
+        if self.ssl_config is None:
+            self.ssl_config = create_ssl_config(secure=False)
+        # if ssl_context is provided in config, use it
+        if self.ssl_config["ssl_context"] is not None:
+            self.ssl_context = self.ssl_config["ssl_context"]
+            return
+        # if ssl_config is set to not be secure, do not attempt to create a context
+        if not self.ssl_config["secure"]:
             return
         # create SSL/TLS context from provided files
-        self.context = ssl.create_default_context()
+        self.ssl_context = ssl.create_default_context()
         # only load client cert + key if client verification is requested
-        if self.config.certfile is not None and self.config.keyfile is not None:
-            self.context.load_cert_chain(certfile=self.config.certfile,
-                                         keyfile=self.config.keyfile)
-        self.context.check_hostname = self.config.check_hostname
-        if self.config.cafile is not None:
-            self.context.load_verify_locations(cafile=self.config.cafile)
+        if self.ssl_config["certfile"] is not None and self.ssl_config["keyfile"] is not None:
+            self.ssl_context.load_cert_chain(certfile=self.ssl_config["certfile"],
+                                         keyfile=self.ssl_config["keyfile"])
+        self.ssl_context.check_hostname = self.ssl_config["check_hostname"]
+        if self.ssl_config["cafile"] is not None:
+            self.ssl_context.load_verify_locations(cafile=self.ssl_config["cafile"])
 
-    def generate_context_server(self, config=None):
+    def generate_context_server(self, ssl_config=None):
         """
         Generate context for a server implementation
         :return: None
         """
-        # if config is provided, replace currently stored one
-        if config is not None:
-            self.config = config
-        # if no config at all in manager, assume no security requested
-        if self.config is None:
-            self.config = CertificateConfiguration(secure=False)
-        # if config is set to not be secure, do not attempt to create a context
-        if not self.config.secure:
+        # if ssl_config is provided, replace currently stored one
+        if ssl_config is not None:
+            self.ssl_config = ssl_config
+        # if no ssl_config at all in manager, assume no security requested
+        if self.ssl_config is None:
+            self.ssl_config = create_ssl_config(secure=False)
+        # if ssl_context is provided in config, use it
+        if self.ssl_config["ssl_context"] is not None:
+            self.ssl_context = self.ssl_config["ssl_context"]
             return
-        # create SSL/TLS context from provided files
-        self.context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-        self.context.load_cert_chain(certfile=self.config.certfile,
-                                     keyfile=self.config.keyfile)
+        # if ssl_config is set to not be secure, do not attempt to create a context
+        if not self.ssl_config["secure"]:
+            return
+        # create SSL/TLS  context from provided files
+        self.ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+        if self.ssl_config["certfile"] is not None and self.ssl_config["keyfile"] is not None:
+            self.ssl_context.load_cert_chain(certfile=self.ssl_config["certfile"],
+                                         keyfile=self.ssl_config["keyfile"])
+        else:
+            raise CertificateManagerException("ssl_context expects keyfile and certfile to not be None for secure option; one or both were None")
         # only check certs if client verification is requested
-        if self.config.cafile is not None:
-            self.context.load_verify_locations(cafile=self.config.cafile)
-            self.context.verify_mode = ssl.CERT_REQUIRED
+        if self.ssl_config["cafile"] is not None:
+            self.ssl_context.load_verify_locations(cafile=self.ssl_config["cafile"])
+            self.ssl_context.verify_mode = ssl.CERT_REQUIRED
+
 
 
 class CertificateManagerException(CepticException):
