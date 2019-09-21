@@ -297,33 +297,33 @@ def test_server_get_endpoint_with_variables():
     var_endpoint_tests.append("<>/<>/<>/<>/<>/test")
 
     for var_endpoint in var_endpoint_tests:
-    	# get variable count and names, in order
-    	var_endpoint_query = var_endpoint
-    	var_count = 0
-    	var_names = []
-    	var_values = []
-    	while var_endpoint.find("<>") != -1:
-    		var_names.append("variable{}".format(var_count))
-    		var_values.append("varvalue{}".format(var_count))
-    		var_endpoint = var_endpoint.replace("<>", "<{}>".format(var_names[-1]),1)
-    		var_endpoint_query = var_endpoint_query.replace("<>",var_values[-1],1)
-    		var_count += 1
-    	# add endpoint
-    	manager.add_endpoint(command="get",
+        # get variable count and names, in order
+        var_endpoint_query = var_endpoint
+        var_count = 0
+        var_names = []
+        var_values = []
+        while var_endpoint.find("<>") != -1:
+            var_names.append("variable{}".format(var_count))
+            var_values.append("varvalue{}".format(var_count))
+            var_endpoint = var_endpoint.replace("<>", "<{}>".format(var_names[-1]),1)
+            var_endpoint_query = var_endpoint_query.replace("<>",var_values[-1],1)
+            var_count += 1
+        # add endpoint
+        manager.add_endpoint(command="get",
                          endpoint=var_endpoint,
                          handler=endpoint_handler)
-    	command_func,handler,variable_dict,settings,settings_override = manager.get_endpoint("get",var_endpoint_query)
-    	assert len(variable_dict) == len(var_values)
-    	current_var_index = 0
-    	while current_var_index < var_count:
-    		name = var_names[current_var_index]
-    		value = var_values[current_var_index]
-    		if variable_dict.get(name) is None:
-    			pytest.fail("variable_dict did not have expected variable '{}' for endpoint: {}".format(name,var_endpoint_query))
-    		if variable_dict.get(name) != value:
-    			pytest.fail("variable_dict did not have expected value '{}' for name '{}' for endpoint: {}. Instead, variable_dict was: {}".format(
-    				value,name,var_endpoint_query,str(variable_dict)))
-    		current_var_index += 1
+        command_func,handler,variable_dict,settings,settings_override = manager.get_endpoint("get",var_endpoint_query)
+        assert len(variable_dict) == len(var_values)
+        current_var_index = 0
+        while current_var_index < var_count:
+            name = var_names[current_var_index]
+            value = var_values[current_var_index]
+            if variable_dict.get(name) is None:
+                pytest.fail("variable_dict did not have expected variable '{}' for endpoint: {}".format(name,var_endpoint_query))
+            if variable_dict.get(name) != value:
+                pytest.fail("variable_dict did not have expected value '{}' for name '{}' for endpoint: {}. Instead, variable_dict was: {}".format(
+                    value,name,var_endpoint_query,str(variable_dict)))
+            current_var_index += 1
 
 def test_server_get_endpoint_valid_endpoint_but_does_not_exist():
     manager = EndpointManager.server()
