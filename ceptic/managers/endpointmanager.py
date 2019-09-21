@@ -103,61 +103,8 @@ class EndpointServerManager(EndpointManager):
         for comm in commands:
             if comm not in self.commandMap:
                 raise EndpointManagerException("command '{}' not found".format(comm))
-        # regex strings
-        allowed_regex = '^[a-zA-Z0-9\-\.\<\>_/]+$' # alphanum and -.<>_
-        start_slash_regex = '^/{2,}' # 2 or more slashes at start
-        end_slash_regex = '/+$' # slashes at end
-        middle_slash_regex = '/{2,}' # 2 or more slashes next to each other
-        variable_regex = '\<[a-zA-Z_]+[a-zA-Z0-9_]*\>' # varied portion of endpoint
-        # non-matching braces, no content between braces, slash between braces, or multiple braces without slash
-        bad_braces_regex = '\<[^\>]*\<|\>[^\<]*\>|\<[^\>]+$|^[^\<]+\>|\<\>|\<([^/][^\>]*/[^/][^\>]*)+\>|\>\<'
-        braces_regex = '<[^>]*>' # find variables in endpoint
-        replacement_regex = '[!-\[\]-~]+' # printable ASCII characters; not actually executed here
-        # check that endpoint is not empty
-        if not endpoint:
-            raise EndpointManagerException("endpoint definition cannot be empty")
-        # check if using allowed characters
-        if re.search(allowed_regex,endpoint) is None:
-            raise EndpointManagerException("endpoint definition '{}' contains invalid characters".format(endpoint))
-        # remove '/' at end of endpoint
-        endpoint = re.sub(end_slash_regex,'',endpoint)
-        # add '/' at start of endpoint if one's not there
-        if not endpoint.startswith('/'):
-            endpoint = "/{}".format(endpoint)
-        # otherwise replace multiple '/' at start with single
-        else:
-            endpoint = re.sub(start_slash_regex,'/',endpoint)
-        # check if there are multiple slashes in the middle; if so, invalid
-        if re.search(middle_slash_regex,endpoint) is not None:
-            raise EndpointManagerException("endpoint definition cannot contain consecutive slashes: {}".format(endpoint))
-        # check if braces are incorrect
-        if re.search(bad_braces_regex,endpoint) is not None:
-            raise EndpointManagerException("endpoint definition contains invalid brace placement: {}".format(endpoint))
-        # check if variables exist in endpoint, and if so store their names and replace by regex
-        variable_names = []
-        braces_found = re.findall(braces_regex,endpoint)
-        # escape unsafe regex chars in endpoint
-        endpoint = re.escape(endpoint)
-        if len(braces_found):
-            # check if found variable is valid
-            for braces in braces_found:
-                if re.search(variable_regex,braces) is None:
-                    raise EndpointManagerException("variable '{}' for endpoint definition '{}' must start with non-numerics and only contain alphanum and underscores".format(braces,endpoint))
-                # if valid variable, check if it has unique name
-                if braces[1:-1] in variable_names:
-                    raise EndpointManagerException("multiple instances of same variable '{}' in endpoint definition; variable names in an endpoint definition must be unique".format(braces,endpoint))
-                # remove surrounding braces when storing
-                variable_names.append(braces[1:-1])
-            # replace variable in endpoint with regex
-            brace_count = 0
-            for braces in braces_found:
-                safe_braces = re.escape(re.escape(braces))
-                # the variable contained in braces '<variable>' acts as the string to substitute;
-                # regex statement is put in its place for usage when looking up proper endpoint.
-                endpoint = re.sub(safe_braces,"(?P<{}>{})".format(variable_names[brace_count],replacement_regex),endpoint)
-                brace_count+=1
-        # add regex to make sure beginning and end of string will be included
-        endpoint = "^{}$".format(endpoint)
+        # get back endpoint formatted into regex
+        endpoint = self.convert_endpoint_into_regex(endpoint)
         # store endpoint for each command
         for comm in commands:
             # check if endpoint already exists
@@ -222,11 +169,70 @@ class EndpointServerManager(EndpointManager):
         :return: either removed endpoint or None
         """
         try:
-            self.commandMap[command][0].pop(endpoint)
+            self.commandMap[command][0].pop(self.convert_endpoint_into_regex(endpoint))
         except KeyError as e:
             return None
         except IndexError as e:
             return None
+
+    def convert_endpoint_into_regex(self, endpoint):
+        # regex strings
+        allowed_regex = '^[a-zA-Z0-9\-\.\<\>_/]+$' # alphanum and -.<>_
+        start_slash_regex = '^/{2,}' # 2 or more slashes at start
+        end_slash_regex = '/+$' # slashes at end
+        middle_slash_regex = '/{2,}' # 2 or more slashes next to each other
+        variable_regex = '\<[a-zA-Z_]+[a-zA-Z0-9_]*\>' # varied portion of endpoint
+        # non-matching braces, no content between braces, slash between braces, multiple braces without slash, or characters between slash and outside of braces
+        bad_braces_regex = '\<[^\>]*\<|\>[^\<]*\>|\<[^\>]+$|^[^\<]+\>|\<\>|\<([^/][^\>]*/[^/][^\>]*)+\>|\>\<|\>[^/]+|/[^/]+\<'
+        braces_regex = '<[^>]*>' # find variables in endpoint
+        replacement_regex = '[!-\.0-~]+' # printable ASCII characters aside from /; not actually executed here
+        # check that endpoint is not empty
+        if not endpoint:
+            raise EndpointManagerException("endpoint definition cannot be empty")
+        # check if using allowed characters
+        if re.search(allowed_regex,endpoint) is None:
+            raise EndpointManagerException("endpoint definition '{}' contains invalid characters".format(endpoint))
+        # remove '/' at end of endpoint
+        endpoint = re.sub(end_slash_regex,'',endpoint)
+        # add '/' at start of endpoint if one's not there
+        if not endpoint.startswith('/'):
+            endpoint = "/{}".format(endpoint)
+        # otherwise replace multiple '/' at start with single
+        else:
+            endpoint = re.sub(start_slash_regex,'/',endpoint)
+        # check if there are multiple slashes in the middle; if so, invalid
+        if re.search(middle_slash_regex,endpoint) is not None:
+            raise EndpointManagerException("endpoint definition cannot contain consecutive slashes: {}".format(endpoint))
+        # check if braces are incorrect
+        if re.search(bad_braces_regex,endpoint) is not None:
+            raise EndpointManagerException("endpoint definition contains invalid brace placement: {}".format(endpoint))
+        # check if variables exist in endpoint, and if so store their names and replace by regex
+        variable_names = []
+        braces_found = re.findall(braces_regex,endpoint)
+        # escape unsafe regex chars in endpoint
+        endpoint = re.escape(endpoint)
+        if len(braces_found):
+            # check if found variable is valid
+            for braces in braces_found:
+                if re.search(variable_regex,braces) is None:
+                    raise EndpointManagerException("variable '{}' for endpoint definition '{}' must start with non-numerics and only contain alphanum and underscores".format(braces,endpoint))
+                # if valid variable, check if it has unique name
+                if braces[1:-1] in variable_names:
+                    raise EndpointManagerException("multiple instances of same variable '{}' in endpoint definition; variable names in an endpoint definition must be unique".format(braces,endpoint))
+                # remove surrounding braces when storing
+                variable_names.append(braces[1:-1])
+            # replace variable in endpoint with regex
+            brace_count = 0
+            for braces in braces_found:
+                safe_braces = re.escape(re.escape(braces))
+                # the variable contained in braces '<variable>' acts as the string to substitute;
+                # regex statement is put in its place for usage when looking up proper endpoint.
+                endpoint = re.sub(safe_braces,"(?P<{}>{})".format(variable_names[brace_count],replacement_regex),endpoint)
+                brace_count+=1
+        # add regex to make sure beginning and end of string will be included
+        endpoint = "^{}$".format(endpoint)
+        return endpoint
+
 
 class EndpointManagerException(CepticException):
     pass
