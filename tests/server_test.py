@@ -1,3 +1,4 @@
+import os
 from sys import version_info
 if version_info < (3,0): # if running python 2
     from testingfixtures import add_surrounding_dir_to_path
@@ -5,31 +6,25 @@ if version_info < (3,0): # if running python 2
     add_surrounding_dir_to_path()
 
 from ceptic.server import CepticServer, create_server_settings
-from ceptic.managers.certificatemanager import create_ssl_config
-import os
 
 
 # TESTS:
 def test_server_creation_with_certs():
     _here = test_server_creation_with_certs
-    ssl_settings = create_ssl_config(
-        certfile=os.path.join(_here.server_certs,"cert_server.pem"),
-        keyfile=os.path.join(_here.server_certs,"key_server.pem"),
-        cafile=os.path.join(_here.server_certs,"cert_client.pem")
-        )
+    certfile=os.path.join(_here.server_certs,"cert_server.pem")
+    keyfile=os.path.join(_here.server_certs,"key_server.pem")
+    cafile=os.path.join(_here.server_certs,"cert_client.pem")
     server_settings = create_server_settings()
-    app = CepticServer(server_settings,ssl_settings)
+    app = CepticServer(server_settings,certfile,keyfile,cafile)
     app.run()
     app.stop()
 
 def test_server_creation_with_certs_no_verify():
     _here = test_server_creation_with_certs_no_verify
-    ssl_settings = create_ssl_config(
-        certfile=os.path.join(_here.server_certs,"cert_server.pem"),
-        keyfile=os.path.join(_here.server_certs,"key_server.pem")
-        )
+    certfile=os.path.join(_here.server_certs,"cert_server.pem")
+    keyfile=os.path.join(_here.server_certs,"key_server.pem")
     server_settings = create_server_settings()
-    app = CepticServer(server_settings,ssl_settings)
+    app = CepticServer(server_settings,certfile,keyfile)
     app.run()
     app.stop()
 

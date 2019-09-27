@@ -102,13 +102,21 @@ class CertificateManager(object):
             return
         # if ssl_config is set to not be secure, do not attempt to create a context
         if not self.ssl_config["secure"]:
+            if self.show_warnings:
+                print("WARNING: 'secure' is set to false and no wrapping has occured; your socket is NOT secure. If this is not desired, reconfigure manager with CertificateConfiguration with 'secure' set to True")
             return
         # create SSL/TLS context from provided files
         self.ssl_context = ssl.create_default_context()
         # only load client cert + key if client verification is requested
-        if self.ssl_config["certfile"] is not None and self.ssl_config["keyfile"] is not None:
+        # if only cert or if only key is provided, raise exception
+        if self.ssl_config["certfile"] is not None:
+            if self.ssl_config["keyfile"] is None:
+                raise CertificateManagerException("certfile was provided but keyfile was not; either both files or neither are expected")
             self.ssl_context.load_cert_chain(certfile=self.ssl_config["certfile"],
                                          keyfile=self.ssl_config["keyfile"])
+        else:
+            if self.ssl_config["keyfile"] is not None:
+                raise CertificateManagerException("keyfile was provided but certfile was not; either both files or neither are expected")
         self.ssl_context.check_hostname = self.ssl_config["check_hostname"]
         if self.ssl_config["cafile"] is not None:
             self.ssl_context.load_verify_locations(cafile=self.ssl_config["cafile"])
@@ -142,7 +150,6 @@ class CertificateManager(object):
         if self.ssl_config["cafile"] is not None:
             self.ssl_context.load_verify_locations(cafile=self.ssl_config["cafile"])
             self.ssl_context.verify_mode = ssl.CERT_REQUIRED
-
 
 
 class CertificateManagerException(CepticException):

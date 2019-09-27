@@ -1,3 +1,4 @@
+import os
 from sys import version_info
 if version_info < (3,0): # if running python 2
     from testingfixtures import add_surrounding_dir_to_path
@@ -5,32 +6,26 @@ if version_info < (3,0): # if running python 2
     add_surrounding_dir_to_path()
 
 from ceptic.client import CepticClient, create_client_settings
-from ceptic.managers.certificatemanager import create_ssl_config
-import os
 
 
 # TESTS:
-def test_client_creation_with_certs():
-    _here = test_client_creation_with_certs
-    ssl_settings = create_ssl_config(
-        certfile=os.path.join(_here.client_certs,"cert_client.pem"),
-        keyfile=os.path.join(_here.client_certs,"key_client.pem"),
-        cafile=os.path.join(_here.client_certs,"cert_server.pem")
-        )
+def test_client_creation_with_all_files():
+    _here = test_client_creation_with_all_files
+    certfile=os.path.join(_here.client_certs,"cert_client.pem")
+    keyfile=os.path.join(_here.client_certs,"key_client.pem")
+    cafile=os.path.join(_here.client_certs,"cert_server.pem")
     client_settings = create_client_settings()
-    client = CepticClient(client_settings,ssl_settings)
+    client = CepticClient(client_settings,certfile,keyfile,cafile)
 
-def test_client_creation_with_certs_no_verify():
-    _here = test_client_creation_with_certs_no_verify
-    ssl_settings = create_ssl_config(
-        certfile=os.path.join(_here.client_certs,"cert_client.pem"),
-        keyfile=os.path.join(_here.client_certs,"key_client.pem")
-        )
+def test_client_creation_with_certfile_keyfile_only():
+    _here = test_client_creation_with_certfile_keyfile_only
+    certfile=os.path.join(_here.client_certs,"cert_client.pem")
+    keyfile=os.path.join(_here.client_certs,"key_client.pem")
     client_settings = create_client_settings()
-    client = CepticClient(client_settings,ssl_settings)
+    client = CepticClient(client_settings,certfile,keyfile)
 
-def test_client_creation_no_certs():
-    _here = test_client_creation_no_certs
+def test_client_creation_no_files_use_system_certs():
+    _here = test_client_creation_no_files_use_system_certs
     client_settings = create_client_settings()
     client = CepticClient(client_settings)
 # END TESTS

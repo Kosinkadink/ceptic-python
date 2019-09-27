@@ -69,12 +69,15 @@ def basic_server_command(s, request, endpoint_func, endpoint_dict):
 
 class CepticServer(object):
 
-    def __init__(self, settings, ssl_config=None):
+    def __init__(self, settings, certfile=None, keyfile=None, cafile=None, secure=True):
         self.settings = settings
         self.shouldExit = False
         # set up endpoint manager
         self.endpointManager = EndpointManager.server()
         # set up certificate manager
+        if certfile is None or keyfile is None:
+            secure = False
+        ssl_config = create_ssl_config(certfile=certfile,keyfile=keyfile,cafile=cafile,secure=secure)
         self.certificateManager = CertificateManager.server(ssl_config=ssl_config)
         # initialize
         self.initialize()

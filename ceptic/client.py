@@ -50,12 +50,14 @@ def basic_client_command(s, request):
 
 class CepticClient(object):
 
-    def __init__(self, settings, ssl_config=None):
+    def __init__(self, settings, certfile=None, keyfile=None, cafile=None, check_hostname=True, secure=True):
         self.settings = settings
         self.shouldExit = False
         # set up endpoint manager
         self.endpointManager = EndpointManager.client()
         # set up certificate manager
+        ssl_config = create_ssl_config(certfile=certfile,keyfile=keyfile,cafile=cafile,
+                                       check_hostname=check_hostname,secure=secure)
         self.certificateManager = CertificateManager.client(ssl_config=ssl_config)
         # do initialization
         self.initialize()
