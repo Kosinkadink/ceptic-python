@@ -418,18 +418,3 @@ def test_server_remove_endpoint():
     assert manager.remove_endpoint("get","/") is None
 
 # END TESTS
-
-
-# TEST SETUP
-def setup_function(function):
-    pass
-
-def teardown_function(function):
-    pass
-
-def setup_module(module):
-    pass
-
-def teardown_module(module):
-    pass
-# END TEST SETUP

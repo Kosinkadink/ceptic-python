@@ -13,6 +13,7 @@ from ceptic.common import CepticRequest,CepticCommands,CepticResponse,CepticExce
 from ceptic.common import create_command_settings,decode_unicode_hook
 from ceptic.managers.endpointmanager import EndpointManager
 from ceptic.managers.certificatemanager import CertificateManager,CertificateManagerException,create_ssl_config
+from ceptic.managers.streammanager import StreamManager
 
 
 def create_server_settings(port=9000, version="1.0.0", send_cache=409600, headers_max_size=1024000, block_on_start=False, use_processes=False, max_parallel_count=1, request_queue_size=10, verbose=False):
@@ -61,7 +62,16 @@ def wrap_server_command(func):
 def basic_server_command(s, request, endpoint_func, endpoint_dict):
     response = endpoint_func(request,**endpoint_dict)
     if not isinstance(response,CepticResponse):
-        errorResponse = CepticResponse(500,"endpoint returned invalid data type '{}'' on server".format(type(response)))
+        try:
+            status = int(response[0])
+            msg = str(response[1])
+            stream = None
+            if len(response) == 3:
+                stream = response[2]
+                assert isinstance(stream,CepticStream)
+            response = CepticResponse(status,msg,stream)
+        except Exception as e:
+             errorResponse = CepticResponse(500,"endpoint returned invalid data type '{}'' on server".format(type(response)))
         errorResponse.send_with_socket(s)
         raise CepticException("expected endpoint_func to return CepticResponse instance, but returned '{}' instead".format(type(response)))
     response.send_with_socket(s)
@@ -75,12 +85,16 @@ class CepticServer(object):
         # set up endpoint manager
         self.endpointManager = EndpointManager.server()
         # set up certificate manager
+        self.certificateManager = CertificateManager.server()
+        self.setup_certificate_manager(certfile,keyfile,cafile,secure)
+        # initialize
+        self.initialize()
+
+    def setup_certificate_manager(self, certfile=None, keyfile=None, cafile=None, secure=True):
         if certfile is None or keyfile is None:
             secure = False
         ssl_config = create_ssl_config(certfile=certfile,keyfile=keyfile,cafile=cafile,secure=secure)
-        self.certificateManager = CertificateManager.server(ssl_config=ssl_config)
-        # initialize
-        self.initialize()
+        self.certificateManager.set_ssl_config(ssl_config)
 
     def initialize(self):
         """
@@ -234,11 +248,10 @@ class CepticServer(object):
             s.sendall("n")
             CepticResponse(400,json.dumps(errors)).send_with_socket(s)
 
-    def route(self, func, endpoint, command, settings_override=None):
+    def route(self, endpoint, command, settings_override=None):
         """
         Decorator for adding endpoints to server instance
         """
-        @functools.wraps(func)
         def decorator_route(func):
             self.endpointManager.add_endpoint(command, endpoint, func, settings_override)
             return func

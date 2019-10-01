@@ -52,7 +52,6 @@ class CepticClient(object):
 
     def __init__(self, settings, certfile=None, keyfile=None, cafile=None, check_hostname=True, secure=True):
         self.settings = settings
-        self.shouldExit = False
         # set up endpoint manager
         self.endpointManager = EndpointManager.client()
         # set up certificate manager
@@ -187,18 +186,3 @@ class CepticClient(object):
             response = CepticResponse.get_with_socket(s, 1024)
             s.close()
             return response
-
-    def exit(self):
-        """
-        Properly begin to exit client; sets shouldExit to True, performs clean_processes()
-        :return: None
-        """
-        self.clean_processes()
-        self.shouldExit = True
-
-    def clean_processes(self):
-        """
-        Function to overload to perform cleaning before exit
-        :return: None
-        """
-        pass

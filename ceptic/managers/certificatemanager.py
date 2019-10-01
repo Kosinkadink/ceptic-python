@@ -36,7 +36,7 @@ class CertificateManager(object):
         """
         Provide requester type and certificate information
         :param request: string representing type (CertificateManager.SERVER or CertificateManager.CLIENT)
-        :param ssl_config: CertificateConfiguration with desired settings
+        :param ssl_config: dict with desired settings
         """
         self.ssl_context = None
         self.show_warnings = True
@@ -46,7 +46,6 @@ class CertificateManager(object):
         }
         self.generate_context_tls = self.assign_request_type(request)
         self.ssl_config = ssl_config
-        self.secure = True
 
     @classmethod
     def client(cls, ssl_config=None):
@@ -62,6 +61,13 @@ class CertificateManager(object):
             return self.REQUEST_MAP[self.REQUEST]
         else:
             CertificateManagerException("requested manager type {} not valid".format(request))
+
+    def set_ssl_config(self, ssl_config):
+        """
+        Set ssl_config of manager instance
+        :param ssl_config: dict with desired settings
+        """
+        self.ssl_config = ssl_config
 
     def wrap_socket(self, socket):
         """
@@ -82,17 +88,14 @@ class CertificateManager(object):
                 print("WARNING: 'secure' is set to false and no wrapping has occured; your socket is NOT secure. If this is not desired, reconfigure manager with CertificateConfiguration with 'secure' set to True")
             return socket
 
-    def generate_context_tls(self, ssl_config=None):
+    def generate_context_tls(self):
         pass
 
-    def generate_context_client(self, ssl_config=None):
+    def generate_context_client(self):
         """
         Generate context for a client implementation
         :return: None
         """
-        # if ssl_config is provided here, replace currently stored one
-        if ssl_config is not None:
-            self.ssl_config = ssl_config
         # if no ssl_config at all in manager, assume no security to be provided
         if self.ssl_config is None:
             self.ssl_config = create_ssl_config(secure=False)
@@ -107,31 +110,29 @@ class CertificateManager(object):
             return
         # create SSL/TLS context from provided files
         self.ssl_context = ssl.create_default_context()
-        # only load client cert + key if client verification is requested
-        # if only cert or if only key is provided, raise exception
-        if self.ssl_config["certfile"] is not None:
-            if self.ssl_config["keyfile"] is None:
-                raise CertificateManagerException("certfile was provided but keyfile was not; either both files or neither are expected")
+        # only load client cert + key if both are present
+        if self.ssl_config["certfile"] is not None and self.ssl_config["keyfile"] is not None:
             self.ssl_context.load_cert_chain(certfile=self.ssl_config["certfile"],
                                          keyfile=self.ssl_config["keyfile"])
+        # if both are missing, ignore
+        elif self.ssl_config["certfile"] is None and self.ssl_config["keyfile"] is None:
+            pass
+        # if only one is present, raise exception; both or neither are expected
         else:
-            if self.ssl_config["keyfile"] is not None:
-                raise CertificateManagerException("keyfile was provided but certfile was not; either both files or neither are expected")
+            raise CertificateManagerException("ssl_context expects keyfile and certfile to not be None for secure option; one or both were None")
+
         self.ssl_context.check_hostname = self.ssl_config["check_hostname"]
         if self.ssl_config["cafile"] is not None:
             self.ssl_context.load_verify_locations(cafile=self.ssl_config["cafile"])
 
-    def generate_context_server(self, ssl_config=None):
+    def generate_context_server(self):
         """
         Generate context for a server implementation
         :return: None
         """
-        # if ssl_config is provided, replace currently stored one
-        if ssl_config is not None:
-            self.ssl_config = ssl_config
-        # if no ssl_config at all in manager, assume no security requested
+        # if no ssl_config at all in manager, create default will; will raise exception due to secure=True
         if self.ssl_config is None:
-            self.ssl_config = create_ssl_config(secure=False)
+            self.ssl_config = create_ssl_config()
         # if ssl_context is provided in config, use it
         if self.ssl_config["ssl_context"] is not None:
             self.ssl_context = self.ssl_config["ssl_context"]
