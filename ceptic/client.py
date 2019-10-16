@@ -17,6 +17,7 @@ def create_client_settings(version="1.0.0", send_cache=409600, headers_max_size=
     settings["version"] = str(version)
     settings["send_cache"] = int(send_cache)
     settings["headers_max_size"] = int(headers_max_size)
+    settings["default_port"] = 9000
     return settings
 
 
@@ -24,21 +25,20 @@ def wrap_client_command(func):
     """
     Decorator for server-side commands
     """
-    @functools.wraps(func)
-    def decorator_client_command(func,s,request):
+    def decorator_client_command(s, request):
         # if Content-Length is a header, expect server to respond with validity of body length
         if "Content-Length" in request.headers:
             valid_length = s.recv(1)
             # if server says length is valid, send body
             if valid_length == "y":
                 s.sendall(request.body)
-                # perform and return from command function
-                return func(s, request)
             # otherwise, receive response and close connection
             else:
                 response = CepticResponse.get_with_socket(s, 1024)
                 s.close()
                 return response
+        # perform and return from command function
+        return func(s, request)
     return decorator_client_command
 
 
@@ -93,7 +93,7 @@ class CepticClient(object):
             create_command_settings(maxMsgLength=2048000000,maxBodyLength=2048000000)
             )
 
-    def verify_request(command, endpoint, headers):
+    def verify_request(self,command, endpoint, headers):
         # verify command is of proper length and exists in endpoint manager
         if not command:
             raise ValueError("command must be provided")
@@ -113,14 +113,6 @@ class CepticClient(object):
                 len(conn_request)-self.settings["headers_max_size"],
                 self.settings["headers_max_size"]))
 
-    def connect_ip_string(self, ip_string, command, endpoint, headers, body=None):
-        try:
-            host = ip.split(':')[0]
-            port = int(ip.split(':')[1])
-        except Exception:
-            raise ValueError("host and port in string could not be found")
-        return connect_ip(host, port, command, endpoint, headers, body)
-
     def connect_ip(self, host, port, command, endpoint, headers, body=None):  # connect to ip
         """
         Connect to ceptic server at given ip
@@ -132,7 +124,10 @@ class CepticClient(object):
         """
         # verify args
         try:
-            verify_request(command, endpoint, headers)
+            # create Content-Length header if body exists and is not already there
+            if body and not headers.get("Content-Length",None):
+                headers["Content-Length"] = len(body)
+            self.verify_request(command, endpoint, headers)
         except ValueError as e:
             raise e
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -147,6 +142,30 @@ class CepticClient(object):
         # create request
         request = CepticRequest(command=command,endpoint=endpoint,headers=headers,body=body)
         return self.connect_protocol_client(s, request)
+
+    def connect_url(self, url, command, headers, body=None):
+        try:
+            host = None
+            port = None
+            endpoint = ""
+            hostAndPort = None
+            hostPortAndEndpoint = url.strip().split("/", 1)
+            hostAndPort = hostPortAndEndpoint[0]
+            if len(hostPortAndEndpoint) > 1:
+                endpoint = hostPortAndEndpoint[1]
+            if len(endpoint) == 0:
+                endpoint = "/"
+            if (":") not in hostAndPort:
+                host = hostAndPort
+                port = self.settings["default_port"]
+            else:
+                host,port = hostAndPort.split(":")
+                port = int(port)
+            return self.connect_ip(host, port, command, endpoint, headers, body)
+        except ValueError as e:
+            raise e
+        except IndexError as e:
+            raise e
 
     def connect_protocol_client(self, s, request):
         """
@@ -164,10 +183,12 @@ class CepticClient(object):
         s = SocketCeptic(s)
         # check if command exists; stop connection if not
         try:
-            command_func = self.endpointManager.get_command(request.command)
+            command_func,settings = self.endpointManager.get_command(request.command)
         except KeyError:
             s.close()
             return CepticResponse(499, "client does not recognize command: {}".format(command))
+        # set request settings
+        request.settings = settings
         # send command
         s.sendall(request.command)
         # send endpoint

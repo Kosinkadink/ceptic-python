@@ -1,4 +1,5 @@
 import select
+from sys import version_info
 
 
 class SocketCeptic(object):

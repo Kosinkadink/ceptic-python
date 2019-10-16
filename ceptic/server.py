@@ -47,7 +47,7 @@ def wrap_server_command(func):
                 return
             s.sendall("y")
             # receive alloted amount of bytes
-            body = s.recv(request.headers["Content-Length"])
+            request.body = s.recv(request.headers["Content-Length"])
         # perform command function with appropriate params
         try:
             func(s,request,endpoint_func,endpoint_dict)
@@ -71,9 +71,9 @@ def basic_server_command(s, request, endpoint_func, endpoint_dict):
                 assert isinstance(stream,CepticStream)
             response = CepticResponse(status,msg,stream)
         except Exception as e:
-             errorResponse = CepticResponse(500,"endpoint returned invalid data type '{}'' on server".format(type(response)))
-        errorResponse.send_with_socket(s)
-        raise CepticException("expected endpoint_func to return CepticResponse instance, but returned '{}' instead".format(type(response)))
+            errorResponse = CepticResponse(500,"endpoint returned invalid data type '{}'' on server".format(type(response)))
+            errorResponse.send_with_socket(s)
+            raise CepticException("expected endpoint_func to return CepticResponse instance, but returned '{}' instead".format(type(response)))
     response.send_with_socket(s)
 
 
@@ -82,6 +82,7 @@ class CepticServer(object):
     def __init__(self, settings, certfile=None, keyfile=None, cafile=None, secure=True):
         self.settings = settings
         self.shouldExit = False
+        self.isRunning = False
         # set up endpoint manager
         self.endpointManager = EndpointManager.server()
         # set up certificate manager
@@ -111,19 +112,19 @@ class CepticServer(object):
             )
         # add post command
         self.endpointManager.add_command(
-            "get",
+            "post",
             basic_server_command,
             create_command_settings(maxMsgLength=2048000000,maxBodyLength=2048000000)
             )
         # add update command
         self.endpointManager.add_command(
-            "get",
+            "update",
             basic_server_command,
             create_command_settings(maxMsgLength=2048000000,maxBodyLength=2048000000)
             )
         # add delete command
         self.endpointManager.add_command(
-            "get",
+            "delete",
             basic_server_command,
             create_command_settings(maxMsgLength=2048000000,maxBodyLength=2048000000)
             )
@@ -134,13 +135,6 @@ class CepticServer(object):
         :return: None
         """
         # run processes
-        self.run_processes()
-
-    def run_processes(self):
-        """
-        Attempts to start the server loop
-        :return: None
-        """
         try:
             self.start_server()
         except Exception as e:
@@ -177,9 +171,10 @@ class CepticServer(object):
             if self.settings["verbose"]: print(str(e))
             self.shouldExit = True
 
-        # queue up to 10 requests
+        # queue up to specified number of  requests
         serversocket.listen(self.settings["request_queue_size"])
         socketlist.append(serversocket)
+        self.isRunning = True
 
         while not self.shouldExit:
             ready_to_read, ready_to_write, in_error = select.select(socketlist, [], [], delay_time)
@@ -199,6 +194,7 @@ class CepticServer(object):
             if self.settings["verbose"]: print(str(e))
         serversocket.close()
         self.stop()
+        self.isRunning = False
 
     def handle_new_connection(self, s, addr):
         """
@@ -241,7 +237,7 @@ class CepticServer(object):
             if settings_override is not None:
                 settings_merged.update(settings_override)
             # create request object
-            request = CepticRequest(command=command,endpoint=endpoint,headers=headers,settings=None)
+            request = CepticRequest(command=command,endpoint=endpoint,headers=headers,settings=settings_merged)
             command_func(s,request,handler,variable_dict)
         # otherwise send info back
         else:
@@ -263,7 +259,6 @@ class CepticServer(object):
         :return: None
         """
         self.shouldExit = True
-        self.clean_processes()
 
     def stop(self):
         """
@@ -271,9 +266,8 @@ class CepticServer(object):
         """
         self.exit()
 
-    def clean_processes(self):
+    def is_stopped(self):
         """
-        Function to overload to perform cleaning before exit
-        :return: None
+        Returns True if server is not running
         """
-        pass
+        return self.shouldExit and not self.isRunning
