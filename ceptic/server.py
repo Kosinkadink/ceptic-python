@@ -13,7 +13,7 @@ from ceptic.common import CepticRequest,CepticCommands,CepticResponse,CepticExce
 from ceptic.common import create_command_settings,decode_unicode_hook
 from ceptic.managers.endpointmanager import EndpointManager
 from ceptic.managers.certificatemanager import CertificateManager,CertificateManagerException,create_ssl_config
-from ceptic.managers.streammanager import StreamManager
+from ceptic.managers.streammanager import StreamManager,StreamFrame
 
 
 def create_server_settings(port=9000, version="1.0.0", send_cache=409600, headers_max_size=1024000, block_on_start=False, use_processes=False, max_parallel_count=1, request_queue_size=10, verbose=False):

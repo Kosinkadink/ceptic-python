@@ -147,6 +147,81 @@ def test_get(server_all_files,client_all_files):
         assert response.status == 200
         assert response.msg == "no body"
 
+def test_get_only_server_related_files(server_certfile_keyfile_only,client_cafile_only):
+    _here = test_get_only_server_related_files
+    # init server and client
+    with server_certfile_keyfile_only(settings=create_server_settings(verbose=True)) as app:
+        _here.server = app
+        client = client_cafile_only()
+        # add test get command
+        @app.route("/","get")
+        def get_command_test_route(request):
+            print("inside get_command_test_route")
+            if request.body is not None:
+                return 200,request.body
+            return 200,"no body"
+        # run server
+        app.run()
+        # make request to server
+        headers = dict()
+        response = client.connect_url("localhost:9000","get", headers)
+        # check that status was OK and msg was "no body"
+        assert response.status == 200
+        assert response.msg == "no body"
+
+def test_get_client_does_not_recognize_server_certs(server_certfile_keyfile_only,client_no_files):
+    _here = test_get_client_does_not_recognize_server_certs
+    # init server and client
+    with server_certfile_keyfile_only(settings=create_server_settings(verbose=True)) as app:
+        _here.server = app
+        client = client_no_files()
+        # add test get command
+        @app.route("/","get")
+        def get_command_test_route(request):
+            print("inside get_command_test_route")
+            if request.body is not None:
+                return 200,request.body
+            return 200,"no body"
+        # run server
+        app.run()
+        # make request to server
+        headers = dict()
+        response = client.connect_url("localhost:9000","get", headers)
+        # check that status was 498 (error wrapping socket with ssl)
+        assert response.status == 498
+
+def test_get_not_secure(server_not_secure,client_not_secure):
+    _here = test_get_not_secure
+    # init server and client
+    with server_not_secure(settings=create_server_settings(verbose=True)) as app:
+        _here.server = app
+        client = client_not_secure()
+        # add test get command
+        @app.route("/","get")
+        def get_command_test_route(request):
+            print("inside get_command_test_route")
+            if request.body is not None:
+                return 200,request.body
+            return 200,"no body"
+        # run server
+        app.run()
+        # make request to server
+        headers = dict()
+        response = client.connect_url("localhost:9000","get", headers)
+        # check that status was OK and msg was "no body"
+        assert response.status == 200
+        assert response.msg == "no body"
+
+def test_get_server_not_found(client_all_files):
+    _here = test_get
+    # init client
+    client = client_all_files()
+    # make request to server
+    headers = dict()
+    response = client.connect_url("localhost:9000","get", headers)
+    # check that status was 494 - server at url not found
+    assert response.status == 494
+
 def test_get_multiple_requests_series(server_all_files,client_all_files):
     _here = test_get_multiple_requests_series
     # init server and client

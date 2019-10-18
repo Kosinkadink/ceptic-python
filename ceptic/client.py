@@ -10,6 +10,7 @@ from ceptic.common import CepticStatusCode,CepticResponse,CepticRequest,CepticCo
 from ceptic.common import create_command_settings,decode_unicode_hook
 from ceptic.managers.endpointmanager import EndpointManager
 from ceptic.managers.certificatemanager import CertificateManager,CertificateManagerException,create_ssl_config
+from ceptic.managers.streammanager import StreamManager,StreamFrame
 
 
 def create_client_settings(version="1.0.0", send_cache=409600, headers_max_size=1024000):
@@ -93,41 +94,45 @@ class CepticClient(object):
             create_command_settings(maxMsgLength=2048000000,maxBodyLength=2048000000)
             )
 
-    def verify_request(self,command, endpoint, headers):
+    def verify_request(self,request):
         # verify command is of proper length and exists in endpoint manager
-        if not command:
+        if not request.command:
             raise ValueError("command must be provided")
-        if len(command) > 128:
+        if len(request.command) > 128:
             raise ValueError("command must be less than 128 char long")
-        if not self.endpointManager.get_command(command):
-            raise ValueError("command '{}' cannot be found in endpoint manager".format(command))
+        if not self.endpointManager.get_command(request.command):
+            raise ValueError("command '{}' cannot be found in endpoint manager".format(request.command))
         # verify endpoint is of proper length
-        if not endpoint:
+        if not request.endpoint:
             raise ValueError("endpoint must be provided")
-        if len(endpoint) > 128:
+        if len(request.endpoint) > 128:
             raise ValueError("endpoint must be less than 128 char long")
         # verify command, endpoint, headers together are of proper length
-        json_headers = json.dumps(headers)
+        json_headers = json.dumps(request.headers)
         if len(json_headers) > self.settings["headers_max_size"]:
             raise ValueError("json headers are {} chars too long; max size is {}".format(
-                len(conn_request)-self.settings["headers_max_size"],
+                len(json_headers)-self.settings["headers_max_size"],
                 self.settings["headers_max_size"]))
 
     def connect_ip(self, host, port, command, endpoint, headers, body=None):  # connect to ip
         """
         Connect to ceptic server at given ip
-        :param ip: string ip:port address, written as XXX.XXX.XXX.XXX:XXXX
-        :param data: data to be inserted into json to send to server
-        :param endpoint: name of endpoint to perform for client-server
-        :param dataToStore: optional data to NOT send to the server but keep for local reference
-        :return: depends on data returned by endpoint's function
+        :param host: string of ip address (ipv4)
+        :param port: int corresponding to port
+        :param command: string command type of request
+        :param endpoint: string endpoint value
+        :param headers: dict containing headers
+        :param body: optional parameter containing body of request
+        :return: CepticResponse instance
         """
         # verify args
         try:
             # create Content-Length header if body exists and is not already there
             if body and not headers.get("Content-Length",None):
                 headers["Content-Length"] = len(body)
-            self.verify_request(command, endpoint, headers)
+            # create request
+            request = CepticRequest(command=command,endpoint=endpoint,headers=headers,body=body)
+            self.verify_request(request)
         except ValueError as e:
             raise e
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -138,12 +143,18 @@ class CepticClient(object):
         except Exception as e:
             # TODO: better error handling for server not available and host/port being bad
             s.close()
-            return CepticResponse(404, "Server at {} not available".format(ip))
-        # create request
-        request = CepticRequest(command=command,endpoint=endpoint,headers=headers,body=body)
+            return CepticResponse(494, "Server at {}:{} not available".format(host,port))
         return self.connect_protocol_client(s, request)
 
     def connect_url(self, url, command, headers, body=None):
+        """
+        Connect to ceptic server at given url
+        :param url: string in format of ip[:port]/endpoint
+        :param command: string command type of request
+        :param headers: dict containing headers
+        :param body: optional parameter containing body of request
+        :return: CepticResponse instance
+        """
         try:
             host = None
             port = None
@@ -172,13 +183,13 @@ class CepticClient(object):
         Perform general ceptic protocol handshake to continue connection
         :param s: socket instance (socket.socket)
         :param request:
-        :return:
+        :return: CepticResponse instance
         """
         # wrap socket with TLS, handshaking happens automatically
         try:
             s = self.certificateManager.wrap_socket(s)
         except CertificateManagerException as e:
-            return CepticResponse(400, str(e))
+            return CepticResponse(498, str(e))
         # wrap socket with SocketCeptic, to send length of message first
         s = SocketCeptic(s)
         # check if command exists; stop connection if not

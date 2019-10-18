@@ -44,6 +44,17 @@ class SocketCepticPy2(SocketCeptic):
         """
         return self.send(msg)
 
+    def send_raw(self, msg):
+        """
+        Send message without prefix
+        :param msg: string or bytes to send
+        :return: None
+        """
+        # if there is nothing to send, then do nothing
+        if not msg:
+            return
+        self.s.sendall(msg)
+
     def recv(self, byte_amount):
         """
         Receive message, first the 16-byte length prefix, then the message of corresponding length. No more than the
@@ -61,6 +72,18 @@ class SocketCepticPy2(SocketCeptic):
         amount = byte_amount
         if size_to_recv < amount:
             amount = size_to_recv
+        recvd = 0
+        text = ""
+        while recvd < amount:
+            part = self.s.recv(amount)
+            recvd += len(part)
+            text += part
+            if part == "":
+                break
+        return text
+
+    def recv_raw(self, byte_amount):
+        amount = byte_amount
         recvd = 0
         text = ""
         while recvd < amount:
@@ -108,7 +131,6 @@ class SocketCepticPy3(SocketCeptic):
         try:
             self.s.sendall(total_size.encode() + msg.encode())
         except AttributeError:
-            print("attribute error occurred")
             self.s.sendall(total_size.encode() + msg)
 
     def sendall(self, msg):
@@ -118,6 +140,22 @@ class SocketCepticPy3(SocketCeptic):
         :return: None
         """
         return self.send(msg)
+
+    def send_raw(self, msg):
+        """
+        Send message without prefix
+        :param msg: string or bytes to send
+        :return: None
+        """
+        # if there is nothing to send, then don't just send size
+        if not msg:
+            return
+        total_size = '%16d' % len(msg)
+        # if it is already in bytes, do not encode it
+        try:
+            self.s.sendall(msg.encode())
+        except AttributeError:
+            self.s.sendall(msg)
 
     def recv(self, byte_amount):
         """
@@ -136,6 +174,24 @@ class SocketCepticPy3(SocketCeptic):
         amount = byte_amount
         if size_to_recv < amount:
             amount = size_to_recv
+        recvd = 0
+        text = bytes()
+        while recvd < amount:
+            part = self.s.recv(amount)
+            recvd += len(part)
+            text += part
+            if part == "":
+                break
+        return text.decode()
+
+    def recv_raw(self, byte_amount):
+        """
+        Receive message of corresponding length. No more than the
+        specified amount of bytes will be received
+        :param byte_amount: integer
+        :return: received bytes, readable as a string
+        """
+        amount = byte_amount
         recvd = 0
         text = bytes()
         while recvd < amount:
