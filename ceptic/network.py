@@ -3,17 +3,36 @@ from sys import version_info
 
 
 class SocketCeptic(object):
-    def __init__(self,  s):
+    def __init__(self, s):
         pass
-    def __new__(self_class, s):
-        if version_info < (3,0): # python2 code
+
+    def __new__(cls, s):
+        if version_info < (3, 0):  # python2 code
             actual_class = SocketCepticPy2
         else:
             actual_class = SocketCepticPy3
         instance = super(SocketCeptic, actual_class).__new__(actual_class)
-        if actual_class != self_class:
+        if actual_class != cls:
             instance.__init__(s)
         return instance
+
+    def send(self, msg):
+        pass
+
+    def sendall(self, msg):
+        pass
+
+    def send_raw(self, msg):
+        pass
+
+    def recv(self, byte_amount):
+        pass
+
+    def get_socket(self):
+        pass
+
+    def close(self):
+        pass
 
 
 class SocketCepticPy2(SocketCeptic):
@@ -21,7 +40,9 @@ class SocketCepticPy2(SocketCeptic):
     Wrapper for normal or ssl socket; adds necessary CEPtic functionality to sending and receiving.
     Usage: wrapped_socket = SocketCeptic(existing_socket)
     """
+
     def __init__(self, s):
+        super(SocketCepticPy2, self).__init__(s)
         self.s = s
 
     def send(self, msg):
@@ -65,9 +86,9 @@ class SocketCepticPy2(SocketCeptic):
         try:
             size_to_recv = self.s.recv(16)
             size_to_recv = int(size_to_recv.strip())
-        except ValueError as e:
+        except ValueError:
             raise EOFError("no data received (EOF)")
-        except:
+        except OSError:
             raise EOFError("no data received (EOF)")
         amount = byte_amount
         if size_to_recv < amount:
@@ -114,7 +135,9 @@ class SocketCepticPy3(SocketCeptic):
     Wrapper for normal or ssl socket; adds necessary CEPtic functionality to sending and receiving.
     Usage: wrapped_socket = SocketCeptic(existing_socket)
     """
+
     def __init__(self, s):
+        super().__init__(s)
         self.s = s
 
     def send(self, msg):
@@ -150,7 +173,6 @@ class SocketCepticPy3(SocketCeptic):
         # if there is nothing to send, then don't just send size
         if not msg:
             return
-        total_size = '%16d' % len(msg)
         # if it is already in bytes, do not encode it
         try:
             self.s.sendall(msg.encode())
@@ -167,9 +189,9 @@ class SocketCepticPy3(SocketCeptic):
         try:
             size_to_recv = self.s.recv(16)
             size_to_recv = int(size_to_recv.strip())
-        except ValueError as e:
+        except ValueError:
             raise EOFError("no data received (EOF)")
-        except OSError as e:
+        except OSError:
             raise EOFError("no data received (EOF)")
         amount = byte_amount
         if size_to_recv < amount:

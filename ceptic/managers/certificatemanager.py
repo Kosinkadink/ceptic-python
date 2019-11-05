@@ -39,7 +39,7 @@ class CertificateManager(object):
         :param ssl_config: dict with desired settings
         """
         self.ssl_context = None
-        self.show_warnings = True
+        self.show_warnings = False
         self.REQUEST_MAP = {
             self.SERVER: self.generate_context_server,
             self.CLIENT: self.generate_context_client

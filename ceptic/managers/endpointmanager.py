@@ -110,7 +110,7 @@ class EndpointServerManager(EndpointManager):
             # check if endpoint already exists
             if endpoint in self.commandMap[comm][0]:
                 raise EndpointManagerException("endpoint '{}' for command '{}' already exists; endpoints for a command must be unique".format(endpoint,comm))
-            # store endpoint as key, [handler, settings_override] as value
+            # store endpoint as key, [stream, settings_override] as value
             self.commandMap[comm][0][endpoint] = [handler,settings_override]
 
     def get_endpoint(self, command, endpoint):
@@ -124,7 +124,7 @@ class EndpointServerManager(EndpointManager):
         if command not in self.commandMap:
             raise EndpointManagerException("command '{}' not found".format(command))
         # regex strings
-        allowed_regex = "^[!-\[\]-~]+$"
+        allowed_regex = r'^[!-\[\]-~]+$'
         start_slash_regex = '^/{2,}' # 2 or more slashes at start
         end_slash_regex = '/+$' # slashes at end
         middle_slash_regex = '/{2,}' # 2 or more slashes next to each other
@@ -155,10 +155,10 @@ class EndpointServerManager(EndpointManager):
         # if nothing found, endpoint doesn't exist
         if proper_endpoint_regex is None:
             raise KeyError("endpoint '{}' cannot be found for command '{}'".format(endpoint,command))
-        # otherwise get variable names and handler function
+        # otherwise get variable names and stream function
         handler,settings_override = endpointMap[proper_endpoint_regex]
         variable_dict = re.match(proper_endpoint_regex,endpoint).groupdict()
-        # return command function, endpoint handler, variable_dict, settings, and settings_override
+        # return command function, endpoint stream, variable_dict, settings, and settings_override
         return command_func,handler,variable_dict,settings,settings_override
 
     def remove_endpoint(self, command, endpoint):
@@ -177,15 +177,15 @@ class EndpointServerManager(EndpointManager):
 
     def convert_endpoint_into_regex(self, endpoint):
         # regex strings
-        allowed_regex = '^[a-zA-Z0-9\-\.\<\>_/]+$' # alphanum and -.<>_
+        allowed_regex = r'^[a-zA-Z0-9\-\.\<\>_/]+$' # alphanum and -.<>_
         start_slash_regex = '^/{2,}' # 2 or more slashes at start
         end_slash_regex = '/+$' # slashes at end
         middle_slash_regex = '/{2,}' # 2 or more slashes next to each other
-        variable_regex = '\<[a-zA-Z_]+[a-zA-Z0-9_]*\>' # varied portion of endpoint
+        variable_regex = r'\<[a-zA-Z_]+[a-zA-Z0-9_]*\>' # varied portion of endpoint
         # non-matching braces, no content between braces, slash between braces, multiple braces without slash, or characters between slash and outside of braces
-        bad_braces_regex = '\<[^\>]*\<|\>[^\<]*\>|\<[^\>]+$|^[^\<]+\>|\<\>|\<([^/][^\>]*/[^/][^\>]*)+\>|\>\<|\>[^/]+|/[^/]+\<'
+        bad_braces_regex = r'\<[^\>]*\<|\>[^\<]*\>|\<[^\>]+$|^[^\<]+\>|\<\>|\<([^/][^\>]*/[^/][^\>]*)+\>|\>\<|\>[^/]+|/[^/]+\<'
         braces_regex = '<[^>]*>' # find variables in endpoint
-        replacement_regex = '[!-\.0-~]+' # printable ASCII characters aside from /; not actually executed here
+        replacement_regex = r'[!-\.0-~]+' # printable ASCII characters aside from /; not actually executed here
         # check that endpoint is not empty
         if not endpoint:
             raise EndpointManagerException("endpoint definition cannot be empty")

@@ -30,19 +30,19 @@ def locations():
 def test_server_creation_with_certs(locations):
     server_settings = create_server_settings()
     app = CepticServer(server_settings,locations.certfile,locations.keyfile,locations.cafile)
-    app.run()
+    app.start()
     app.stop()
 
 def test_server_creation_with_certs_no_verify(locations):
     server_settings = create_server_settings()
     app = CepticServer(server_settings,locations.certfile,locations.keyfile)
-    app.run()
+    app.start()
     app.stop()
 
 def test_server_creation_with_no_certs(locations):
     server_settings = create_server_settings()
     app = CepticServer(server_settings)
-    app.run()
+    app.start()
     app.stop()
 
 def test_add_route(locations):

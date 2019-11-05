@@ -1,15 +1,19 @@
 import os
 import sys
+import json
 from sys import version_info
+from time import time
 
 
-def create_command_settings(maxMsgLength=2048000000,maxBodyLength=2048000000):
+# StreamManager import located on bottom of file to allow circular import
+
+
+def create_command_settings(maxMsgLength=2048000000, maxBodyLength=2048000000):
     """
     Generates dictionary with command settings
     """
-    settings = {}
-    settings["maxMsgLength"] = int(maxMsgLength)
-    settings["maxBodyLength"] = int(maxBodyLength)
+    settings = {"maxMsgLength": int(maxMsgLength),
+                "maxBodyLength": int(maxBodyLength)}
     return settings
 
 
@@ -37,46 +41,74 @@ class CepticStatusCode(object):
 
     @staticmethod
     def is_success(status_code):
-        return status_code >= 200 and status_code <= 299
+        return 200 <= status_code <= 299
+
     @staticmethod
     def is_error(status_code):
-        return status_code >= 400 and status_code <= 599
+        return 400 <= status_code <= 599
+
     @staticmethod
     def is_client_error(status_code):
-        return status_code >= 400 and status_code <= 499
+        return 400 <= status_code <= 499
+
     @staticmethod
     def is_server_error(status_code):
-        return status_code >= 500 and status_code <= 599
+        return 500 <= status_code <= 599
 
 
 class CepticResponse(object):
-    def __init__(self, status, msg, stream=None):
+    def __init__(self, status, msg, headers=None, stream=None):
         self.status = int(status)
+        self.headers = headers
         self.msg = msg
         self.stream = stream
+
     def get_dict(self):
-        return {"status":self.status, "msg":self.msg}
+        return {"status": self.status, "msg": self.msg}
+
+    def create_frame(self, stream_id):
+        data = "{}\r\n{}\r\n{}".format(self.status, self.headers, self.msg)
+        return StreamFrame.create_header(stream_id, data)
+
+    @classmethod
+    def get_from_frame(cls, frame):
+        status, json_headers, msg = frame.get_data().split("\r\n")
+        return cls(status, msg, headers=json.loads(json_headers, object_pairs_hook=decode_unicode_hook))
+
     @staticmethod
     def get_with_socket(s, max_msg_length):
         status = int(s.recv(3))
         msg = s.recv(max_msg_length)
-        return CepticResponse(status,msg)
+        return CepticResponse(status, msg)
+
     def send_with_socket(self, s):
         s.sendall('%3d' % self.status)
         s.sendall(self.msg)
+
     def __repr__(self):
         return str(self.get_dict())
+
     def __str__(self):
         return self.__repr__()
 
 
 class CepticRequest(object):
-    def __init__(self, command=None,endpoint=None,headers=None,body=None,settings=None):
+    def __init__(self, command=None, endpoint=None, headers=None, body=None, settings=None):
         self.command = command
         self.endpoint = endpoint
         self.headers = headers
         self.body = body
         self.settings = settings
+
+    def create_frame(self, stream_id):
+        data = "{}\r\n{}\r\n{}".format(self.command, self.endpoint, json.dumps(self.headers))
+        return StreamFrame.create_header(stream_id, data)
+
+    @classmethod
+    def from_frame(cls, frame):
+        command, endpoint, json_headers = frame.get_data().split("\r\n")
+        print("FRAME DATA: {}".format(frame.get_data()))
+        return cls(command, endpoint, json.loads(json_headers, object_pairs_hook=decode_unicode_hook))
 
 
 class CepticException(Exception):
@@ -86,157 +118,27 @@ class CepticException(Exception):
     pass
 
 
-class FileFrame(object):
-    """
-    Object to store metadata about a file to be sent/received
-    """
-    def __init__(self, file_name, file_path, send_cache):
-        self.file_name = file_name
-        self.file_path = file_path
-        self.send_cache = send_cache
-        if version_info >= (3,0): # check if running python3
-            self.recv = self.recv_py3
+class Timer(object):
+    __slots__ = ("start_time", "end_time")
 
-    def send(self, s):
-        """
-        Send file from specified location
-        :param s: some SocketCeptic instance 
-        :param file_path: full path of file location
-        :param file_name: filename of file; for display purposes only
-        :param send_cache: amount of bytes to attempt to send at a time
-        :return: status of upload (success: 200, failure: 400)
-        """
-        file_name = self.file_name
-        file_path = self.file_path
-        send_cache = self.send_cache
-        try:
-            # check if file exists, and if not send file length as all "n"
-            if not os.path.isfile(file_path):
-                s.sendall("n"*16)
-                raise IOError("No file found at {}".format(file_path))
-            file_length = os.path.getsize(file_path)
-            # send size of file
-            s.sendall("%16d" % file_length)
-            # open file and send it
-            print(file_path)
-            with open(file_path, 'rb') as f:
-                print("{} sending...".format(file_name))
-                sent = 0
-                while file_length > sent:
-                    # print progress of upload, ignore if cannot display
-                    try:
-                        sys.stdout.write(
-                            str((float(sent) / file_length) * 100)[:4] + '%   ' + str(sent) + '/' + str(
-                                file_length) + ' B\r')
-                        sys.stdout.flush()
-                    except:
-                        pass
-                    data = f.read(send_cache)
-                    s.sendall(data)
-                    if not data:
-                        break
-                    sent += len(data)
-            # get heartbeat
-            s.recv(2)
-            sys.stdout.write('100.0%   ' + str(sent) + '/' + str(file_length) + ' B\n')
-            print("{} sending successful".format(file_name))
-            # return metadata
-            return {"status": 200, "msg": "OK"}
-        except Exception as e:
-            print("ERROR has occured while sending file")
-            return {"status": 400, "msg": "{}".format(str(e))}
+    def __init__(self):
+        self.start_time = None
+        self.end_time = None
 
-    def recv(self, s):
-        """
-        Receive a file to specified location
-        :param s: some SocketCeptic instance
-        :param file_path: full path of save location
-        :param file_name: filename of file; for display purposes only
-        :param send_cache: amount of bytes to attempt to receive at a time
-        :return: status of download (success: 200, failure: 400)
-        """
-        file_name = self.file_name
-        file_path = self.file_path
-        send_cache = self.send_cache
-        try:
-            # get size of file
-            received_string = s.recv(16).strip()
-            if received_string == "n"*16:
-                raise IOError("No file found ({}) on sender side".format(file_name))
-            file_length = int(received_string)
-            with open(file_path, 'wb') as f:
-                print("{} receiving...".format(file_name))
-                received = 0
-                while file_length > received:
-                    # print progress of download, ignore if cannot display
-                    try:
-                        sys.stdout.write(
-                            str((float(received) / file_length) * 100)[:4] + '%   ' + str(received) + '/' + str(file_length)
-                            + 'B\r'
-                        )
-                        sys.stdout.flush()
-                    except:
-                        pass
-                    data = s.recv(send_cache)
-                    if not data:
-                        break
-                    received += len(data)
-                    f.write(data)
-            # send heartbeat
-            s.sendall("ok")
-            sys.stdout.write('100.0%   ' + str(received) + '/' + str(file_length) + ' B\n')
-            print("{} receiving successful".format(file_name))
-            # return metadata
-            return {"status": 200, "msg": "OK"}
-        except Exception as e:
-            print("ERROR has occured while receiving file")
-            return {"status": 400, "msg": "{}".format(str(e))}
+    def start(self):
+        self.start_time = time()
 
-    def recv_py3(self, s):
-        """
-        Receive a file to specified location
-        :param s: some SocketCeptic instance
-        :param file_path: full path of save location
-        :param file_name: filename of file; for display purposes only
-        :param send_cache: amount of bytes to attempt to receive at a time
-        :return: status of download (success: 200, failure: 400)
-        """
-        file_name = self.file_name
-        file_path = self.file_path
-        send_cache = self.send_cache
-        try:
-            # get size of file
-            received_string = s.recv(16).strip()
-            if received_string == "n"*16:
-                raise IOError("No file found ({}) on sender side".format(file_name))
-            file_length = int(received_string)
-            with open(file_path, 'wb') as f:
-                print("{} receiving...".format(file_name))
-                received = 0
-                while file_length > received:
-                    # print progress of download, ignore if cannot display
-                    try:
-                        sys.stdout.write(
-                            str((float(received) / file_length) * 100)[:4] + '%   ' + str(received) + '/' + str(file_length)
-                            + 'B\r'
-                        )
-                        sys.stdout.flush()
-                    except:
-                        pass
-                    data = s.recv(send_cache).encode()
-                    if not data:
-                        break
-                    received += len(data)
-                    f.write(data)
-            # send heartbeat
-            s.sendall("ok")
-            sys.stdout.write('100.0%   ' + str(received) + '/' + str(file_length) + ' B\n')
-            print("{} receiving successful".format(file_name))
-            # return metadata
-            return {"status": 200, "msg": "OK"}
-        except Exception as e:
-            print("ERROR has occured while receiving file")
-            return {"status": 400, "msg": "{}".format(str(e))}
+    def update(self):
+        self.start()
+
+    def stop(self):
+        self.end_time = time()
+
+    def get_time_diff(self):
+        return self.end_time - self.start_time
+
+    def get_time(self):
+        return time() - self.start_time
 
 
 def normalize_path(path):
@@ -256,7 +158,7 @@ def decode_unicode_hook(json_pairs):
     :param json_pairs: dictionary of json key-value pairs
     :return: new dictionary of json key-value pairs in utf-8
     """
-    if version_info >= (3,0): # is 3.X
+    if version_info >= (3, 0):  # is 3.X
         return dict(json_pairs)
     new_json_pairs = []
     for key, value in json_pairs:
@@ -266,3 +168,6 @@ def decode_unicode_hook(json_pairs):
             key = key.encode("utf-8")
         new_json_pairs.append((key, value))
     return dict(new_json_pairs)
+
+
+from ceptic.managers.streammanager import StreamFrame
