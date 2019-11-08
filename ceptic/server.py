@@ -16,7 +16,7 @@ from ceptic.managers.streammanager import StreamManager, StreamFrame
 
 
 def create_server_settings(port=9000, version="1.0.0", send_cache=409600, headers_max_size=1024000,
-                           frame_max_size=1024000, content_max_size=10240000, stream_timeout=5, handler_timeout=5,
+                           frame_max_size=10, content_max_size=10240000, stream_timeout=5, handler_timeout=5,
                            block_on_start=False, use_processes=False, max_parallel_count=1, request_queue_size=10,
                            verbose=False):
     settings = {"port": int(port),
@@ -494,11 +494,12 @@ class CepticServerNew(object):
         manager.start()
 
     @staticmethod
-    def handle_new_connection(stream, config_settings, endpoint_manager):
-        # get header frame
-        frame = stream.get_next_frame()
-        # get request from frame
-        request = CepticRequest.from_frame(frame)
+    def handle_new_connection(stream, server_settings, endpoint_manager):
+        # get request data from frames
+        request_data = stream.get_full_header_data()
+        print("SERVER: GOT FULL HEADER DATA: {}".format(request_data))
+        # get request from request data
+        request = CepticRequest.from_data(request_data)
         # began checking validity of request
         errors = {"errors": list()}
         # check that command and endpoint are of valid length
@@ -519,6 +520,8 @@ class CepticServerNew(object):
                 settings_merged.update(settings_override)
             # set request settings to merged settings
             request.settings = settings_merged
+            # set server settings as request's config settings
+            request.config_settings = server_settings
         except KeyError as e:
             errors["errors"].append("endpoint of type {} not recognized: {}".format(request.command, request.endpoint))
         # check that Content-Length header (if present) is of allowed length
@@ -533,9 +536,10 @@ class CepticServerNew(object):
         # otherwise send info back
         else:
             # send frame with error and bad status
-            response_frame = CepticResponse(400, json.dumps(errors), headers={"Content-Type": "json"}).create_frame(
-                stream.stream_id)
-            stream.send(response_frame)
+            response_frames = CepticResponse(400, json.dumps(errors), headers={"Content-Type": "json"}).generate_frames(
+                stream.stream_id, stream.frame_size)
+            for frame in response_frames:
+                stream.send(frame)
             stream.send_close()
 
     def route(self, endpoint, command, settings_override=None):

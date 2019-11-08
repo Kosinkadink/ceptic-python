@@ -11,7 +11,7 @@ from ceptic.managers.certificatemanager import CertificateManager, CertificateMa
 from ceptic.managers.streammanager import StreamManager, StreamFrame
 
 
-def create_client_settings(version="1.0.0", send_cache=409600, headers_max_size=1024000, frame_max_size=1024000,
+def create_client_settings(version="1.0.0", send_cache=409600, headers_max_size=1024000, frame_max_size=10,
                            content_max_size=10240000, stream_timeout=5, handler_timeout=5):
     settings = {"version": str(version),
                 "send_cache": int(send_cache),
@@ -443,19 +443,22 @@ class CepticClientNew(object):
         :param request:
         :return: CepticResponse instance
         """
-        # create header frame from request
-        header_frame = request.create_frame(stream_id=stream.stream_id)
-        # send it
-        stream.send(header_frame)
+        # create frames from request
+        header_frames = request.generate_frames(stream.stream_id, stream.frame_size)
+
+        # send frames
+        for frame in header_frames:
+            stream.send(frame)
         # wait for response
         print("connect_protocol_client: waiting for response...")
-        response_frame = stream.get_next_frame()
-        print("connect_protocol_client: got response: {}".format(response_frame.get_data()))
+        response_data = stream.get_full_data()
+        # response_frame = stream.get_next_frame()
+        print("connect_protocol_client: got response: {}".format(response_data))
+        # print("connect_protocol_client: got response: {}".format(response_frame.get_data()))
         # get command_func and settings for command
         command_func, settings = self.endpointManager.get_command(request.command)
         # set request settings
         request.settings = settings
-
 
         # check if command exists; stop connection if not
         # try:

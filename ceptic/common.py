@@ -56,6 +56,36 @@ class CepticStatusCode(object):
         return 500 <= status_code <= 599
 
 
+class CepticRequest(object):
+    def __init__(self, command=None, endpoint=None, headers=None, body=None, settings=None, config_settings=None):
+        self.command = command
+        self.endpoint = endpoint
+        self.headers = headers
+        self.body = body
+        self.settings = settings
+        self.config_settings = config_settings
+        # TODO: Add properties to easily access common headers (and return None if not present)
+
+    def create_frame(self, stream_id):
+        data = "{}\r\n{}\r\n{}".format(self.command, self.endpoint, json.dumps(self.headers))
+        return StreamFrame.create_header(stream_id, data)
+
+    def generate_frames(self, stream_id, frame_size):
+        data = "{}\r\n{}\r\n{}".format(self.command, self.endpoint, json.dumps(self.headers))
+        generator = StreamFrameGen(stream_id, frame_size).from_data(data)
+        # make first frame type header
+        frame = next(generator)
+        frame.set_to_header()
+        yield frame
+        for frame in generator:
+            yield frame
+
+    @classmethod
+    def from_data(cls, data):
+        command, endpoint, json_headers = data.split("\r\n")
+        return cls(command, endpoint, json.loads(json_headers, object_pairs_hook=decode_unicode_hook))
+
+
 class CepticResponse(object):
     def __init__(self, status, msg, headers=None, stream=None):
         self.status = int(status)
@@ -69,6 +99,12 @@ class CepticResponse(object):
     def create_frame(self, stream_id):
         data = "{}\r\n{}\r\n{}".format(self.status, self.headers, self.msg)
         return StreamFrame.create_header(stream_id, data)
+
+    def generate_frames(self, stream_id, frame_size):
+        data = "{}\r\n{}\r\n{}".format(self.status, self.headers, self.msg)
+        generator = StreamFrameGen(stream_id, frame_size).from_data(data)
+        for frame in generator:
+            yield frame
 
     @classmethod
     def get_from_frame(cls, frame):
@@ -90,25 +126,6 @@ class CepticResponse(object):
 
     def __str__(self):
         return self.__repr__()
-
-
-class CepticRequest(object):
-    def __init__(self, command=None, endpoint=None, headers=None, body=None, settings=None):
-        self.command = command
-        self.endpoint = endpoint
-        self.headers = headers
-        self.body = body
-        self.settings = settings
-
-    def create_frame(self, stream_id):
-        data = "{}\r\n{}\r\n{}".format(self.command, self.endpoint, json.dumps(self.headers))
-        return StreamFrame.create_header(stream_id, data)
-
-    @classmethod
-    def from_frame(cls, frame):
-        command, endpoint, json_headers = frame.get_data().split("\r\n")
-        print("FRAME DATA: {}".format(frame.get_data()))
-        return cls(command, endpoint, json.loads(json_headers, object_pairs_hook=decode_unicode_hook))
 
 
 class CepticException(Exception):
@@ -170,4 +187,4 @@ def decode_unicode_hook(json_pairs):
     return dict(new_json_pairs)
 
 
-from ceptic.managers.streammanager import StreamFrame
+from ceptic.managers.streammanager import StreamFrame, StreamFrameGen
