@@ -62,7 +62,7 @@ class StreamManager(threading.Thread):
         self.keep_alive_timer = Timer()
         self.isRunning = False
         self.use_processes = False
-        self.timeout = 0.001
+        self.delay_time = 0.001
         # threads
         self.receive_thread = threading.Thread(target=self.receive_frames)
         self.receive_thread.daemon = True
@@ -99,7 +99,7 @@ class StreamManager(threading.Thread):
             # remove timed out streams
             while len(streams_to_remove):
                 self.close_handler(streams_to_remove.pop(0))
-            sleep(self.timeout)
+            sleep(self.delay_time)
             self.check_for_timeout()
         # wait for receive_thread to fully close
         self.receive_thread.join()
@@ -110,7 +110,7 @@ class StreamManager(threading.Thread):
         # set start time for keep alive timer
         self.keep_alive_timer.start()
         while not self.shouldStop.is_set():
-            ready_to_read, ready_to_write, in_error = select_ceptic([self.s], [], [], self.timeout)
+            ready_to_read, ready_to_write, in_error = select_ceptic([self.s], [], [], self.delay_time)
             # if ready to read, attempt to get frame from socket
             for sock in ready_to_read:
                 # get frame
@@ -219,6 +219,10 @@ class StreamHandler(object):
     def max_header_size(self):
         return self.settings["headers_max_size"]
 
+    @property
+    def timeout(self):
+        return self.settings["stream_timeout"]
+
     def stop(self):
         self.shouldStop.set()
 
@@ -227,7 +231,7 @@ class StreamHandler(object):
 
     def is_timed_out(self):
         # if timeout past stream_timeout setting, stop handler
-        if self.keep_alive_timer.get_time() > self.settings["handler_timeout"]:
+        if self.keep_alive_timer.get_time() > self.settings["stream_timeout"]:
             print("handler with stream_id {} has timed out".format(self.stream_id))
             return True
         return False
@@ -261,7 +265,7 @@ class StreamHandler(object):
 
     def get_next_frame(self, timeout=None):
         if timeout is None:
-            timeout = self.settings["handler_timeout"]
+            timeout = self.settings["stream_timeout"]
         # if timeout is 0, then block and wait to get next frame
         if timeout == 0:
             while not self.is_ready_to_read() and not self.is_stopped():
@@ -284,7 +288,7 @@ class StreamHandler(object):
         Returns combined data (if applicable) for continued frames until an end frame is encountered
         """
         if timeout is None:
-            timeout = self.settings["handler_timeout"]
+            timeout = self.settings["stream_timeout"]
         full_data = ""
         # done = False
         frame_generator = self.gen_next_frame(timeout)
@@ -309,7 +313,7 @@ class StreamHandler(object):
         Returns list of frames (if applicable) for continued frames until an end frame is encountered
         """
         if timeout is None:
-            timeout = self.settings["handler_timeout"]
+            timeout = self.settings["stream_timeout"]
         frames = []
         total_data = 0
         # done = False
@@ -635,7 +639,7 @@ class StreamFrame(object):
         Returns frame initialized as keep_alive type
         :return: StreamFrame instance
         """
-        return cls(stream_id, StreamFrame.enum_type["keep_alive"], StreamFrame.enum_info["end"], None)
+        return cls(stream_id, StreamFrame.enum_type["keep_alive"], StreamFrame.enum_info["end"])
 
     @classmethod
     def create_close(cls, stream_id):
@@ -643,7 +647,7 @@ class StreamFrame(object):
         Returns frame initialized as close type
         :return: StreamFrame instance
         """
-        return cls(stream_id, StreamFrame.enum_type["close"], StreamFrame.enum_info["end"], None)
+        return cls(stream_id, StreamFrame.enum_type["close"], StreamFrame.enum_info["end"])
 
     @classmethod
     def create_close_all(cls):
@@ -651,4 +655,4 @@ class StreamFrame(object):
         Returns frame initialized as close_all type
         :return: StreamFrame instance
         """
-        return cls(StreamFrame.null_id, StreamFrame.enum_type["close_all"], StreamFrame.enum_info["end"], None)
+        return cls(StreamFrame.null_id, StreamFrame.enum_type["close_all"], StreamFrame.enum_info["end"])

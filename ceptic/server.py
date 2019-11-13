@@ -12,21 +12,23 @@ from ceptic.common import CepticRequest, CepticCommands, CepticResponse, CepticE
 from ceptic.common import create_command_settings, decode_unicode_hook
 from ceptic.managers.endpointmanager import EndpointManager
 from ceptic.managers.certificatemanager import CertificateManager, CertificateManagerException, create_ssl_config
-from ceptic.managers.streammanager import StreamManager, StreamFrame
+from ceptic.managers.streammanager import StreamManager
 
 
-def create_server_settings(port=9000, version="1.0.0", send_cache=409600, headers_max_size=1024000,
-                           frame_max_size=10, content_max_size=10240000, stream_timeout=5, handler_timeout=5,
-                           block_on_start=False, use_processes=False, max_parallel_count=1, request_queue_size=10,
-                           verbose=False):
+def create_server_settings(port=9000, version="1.0.0",
+                           headers_min_size=1024000, headers_max_size=1024000,
+                           frame_min_size=1024000, frame_max_size=1024000, content_max_size=10240000,
+                           stream_min_timeout=5, stream_timeout=5, block_on_start=False,
+                           use_processes=False, max_parallel_count=1, request_queue_size=10, verbose=False):
     settings = {"port": int(port),
                 "version": str(version),
-                "send_cache": int(send_cache),
+                "headers_min_size": int(headers_min_size),
                 "headers_max_size": int(headers_max_size),
+                "frame_min_size": int(frame_min_size),
                 "frame_max_size": int(frame_max_size),
                 "content_max_size": int(content_max_size),
+                "stream_min_timeout": int(stream_min_timeout),
                 "stream_timeout": int(stream_timeout),
-                "handler_timeout": int(handler_timeout),
                 "block_on_start": bool(block_on_start),
                 "use_processes": bool(use_processes),
                 "max_parallel_count": int(max_parallel_count),
@@ -340,6 +342,27 @@ def stream_server_command(s, request, endpoint_func, endpoint_dict):
     response.send_with_socket(s)
 
 
+def check_if_setting_bounded(client_min, client_max, server_min, server_max, name):
+    error = None
+    value = None
+    if client_max <= server_max:
+        if client_max < server_min:
+            error = "client max {0} ({1}) is less than server's min {0} ({2})".format(
+                name, client_max, server_min)
+        else:
+            value = client_max
+    else:
+        # since client max is greater than server max, check if server max is appropriate
+        if client_min > server_max:
+            # client min greater than server max, so not compatible
+            error = "client min {0} ({1}) is greater than server's max {0} ({2})".format(
+                name, client_min, server_max)
+        # otherwise use server version
+        else:
+            value = server_max
+    return error, value
+
+
 class CepticServerNew(object):
 
     def __init__(self, settings, certfile=None, keyfile=None, cafile=None, secure=True):
@@ -485,9 +508,85 @@ class CepticServerNew(object):
             return
         # wrap socket with SocketCeptic, to send length of message first
         s = SocketCeptic(s)
+        # get version
+        client_version = s.recv_raw(16).strip()
+        # get client frame_min_size
+        client_frame_min_size_str = s.recv_raw(16).strip()
+        # get client frame_max_size
+        client_frame_max_size_str = s.recv_raw(16).strip()
+        # get client headers_min_size
+        client_headers_min_size_str = s.recv_raw(16).strip()
+        # get client headers_max_size
+        client_headers_max_size_str = s.recv_raw(16).strip()
+        # get client stream_min_timeout
+        client_stream_min_timeout_str = s.recv_raw(4).strip()
+        # get client stream timeout
+        client_stream_timeout_str = s.recv_raw(4).strip()
+        # see if values are acceptable
+        stream_settings = {}
+        errors = []
+        # convert received values to int
+        client_frame_min_size = None
+        client_frame_max_size = None
+        client_headers_min_size = None
+        client_headers_max_size = None
+        client_stream_min_timeout = None
+        client_stream_timeout = None
+        try:
+            client_frame_min_size = int(client_frame_min_size_str)
+            client_frame_max_size = int(client_frame_max_size_str)
+            client_headers_min_size = int(client_headers_min_size_str)
+            client_headers_max_size = int(client_headers_max_size_str)
+            client_stream_min_timeout = int(client_stream_min_timeout_str)
+            client_stream_timeout = int(client_stream_timeout_str)
+        except ValueError:
+            errors.append("received value must be an int, not string")
+        if not errors:
+            # check if server's frame size is acceptable
+            error, value = check_if_setting_bounded(client_frame_min_size, client_frame_max_size,
+                                                    self.settings["frame_min_size"], self.settings["frame_max_size"],
+                                                    "frame size")
+            if error:
+                errors.append(error)
+            else:
+                stream_settings["frame_max_size"] = value
+            # check if server's header size is acceptable
+            error, value = check_if_setting_bounded(client_headers_min_size, client_headers_max_size,
+                                                    self.settings["headers_min_size"],
+                                                    self.settings["headers_max_size"],
+                                                    "headers size")
+            if error:
+                errors.append(error)
+            else:
+                stream_settings["headers_max_size"] = value
+            # check if server's timeout is acceptable
+            error, value = check_if_setting_bounded(client_stream_min_timeout, client_stream_timeout,
+                                                    self.settings["stream_min_timeout"],
+                                                    self.settings["stream_timeout"],
+                                                    "stream timeout")
+            if error:
+                errors.append(error)
+            else:
+                stream_settings["stream_timeout"] = value
+        # send response
+        # if errors present, send negative response with explanation
+        if errors:
+            s.send_raw("n")
+            error_string = str(errors)[:1024]
+            s.sendall(error_string)
+            if self.settings["verbose"]:
+                print("client not compatible with server settings, connection terminated")
+            s.close()
+            return
+        # otherwise send positive response along with decided values
+        else:
+            s.send_raw("y")
+            s.send_raw("{:16}".format(stream_settings["frame_max_size"]))
+            s.send_raw("{:16}".format(stream_settings["headers_max_size"]))
+            s.send_raw("{:4}".format(stream_settings["stream_timeout"]))
         # create StreamManager
         manager_uuid = uuid.uuid4()
-        manager = StreamManager.server(s, manager_uuid, self.settings, CepticServerNew.handle_new_connection,
+        manager = StreamManager.server(s, manager_uuid, stream_settings, CepticServerNew.handle_new_connection,
                                        self.endpointManager, self.remove_manager)
         self.managerDict[manager_uuid] = manager
         manager.daemon = True

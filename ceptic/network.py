@@ -28,6 +28,9 @@ class SocketCeptic(object):
     def recv(self, byte_amount):
         pass
 
+    def recv_raw(self, byte_amount):
+        pass
+
     def get_socket(self):
         pass
 
@@ -54,7 +57,7 @@ class SocketCepticPy2(SocketCeptic):
         # if there is nothing to send, then don't just send size
         if not msg:
             return
-        total_size = '%16d' % len(msg)
+        total_size = format(len(msg), "<16")
         self.s.sendall(total_size + msg)
 
     def sendall(self, msg):
@@ -149,7 +152,7 @@ class SocketCepticPy3(SocketCeptic):
         # if there is nothing to send, then don't just send size
         if not msg:
             return
-        total_size = '%16d' % len(msg)
+        total_size = format(len(msg), "<16")
         # if it is already in bytes, do not encode it
         try:
             self.s.sendall(total_size.encode() + msg.encode())

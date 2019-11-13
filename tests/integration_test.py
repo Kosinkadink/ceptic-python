@@ -436,17 +436,18 @@ def teardown_function(function):
 
 if __name__ == "__main__":
     client_settings = create_client_settings()
-    client = CepticClientNew(settings=client_settings, secure=False)
+    test_client = CepticClientNew(settings=client_settings, secure=False)
     server_settings = create_server_settings(port=9000, verbose=True)
-    server = CepticServerNew(settings=server_settings, secure=False)
+    test_server = CepticServerNew(settings=server_settings, secure=False)
     # start server
-    server.start()
-    headers = dict()
+    test_server.start()
+    default_headers = dict()
     # try:
-    client.connect_url("localhost:9000/", "get", headers=headers)
+    test_client.connect_url("localhost:9000/", "get", headers=default_headers)
+    # test_client.connect_ip("notavalidaddress9000/", None, "get", "/", headers=default_headers)
     # except Exception as e:
     #    print(str(e))
     sleep(7)
-    server.stop()
-    while not server.is_stopped():
+    test_server.stop()
+    while not test_server.is_stopped():
         sleep(0.1)

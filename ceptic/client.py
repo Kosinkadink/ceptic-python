@@ -4,22 +4,25 @@ import uuid
 
 from sys import version_info
 from ceptic.network import SocketCeptic
-from ceptic.common import CepticStatusCode, CepticResponse, CepticRequest, CepticCommands
+from ceptic.common import CepticStatusCode, CepticResponse, CepticRequest, CepticCommands, CepticException
 from ceptic.common import create_command_settings, decode_unicode_hook
 from ceptic.managers.endpointmanager import EndpointManager
 from ceptic.managers.certificatemanager import CertificateManager, CertificateManagerException, create_ssl_config
-from ceptic.managers.streammanager import StreamManager, StreamFrame
+from ceptic.managers.streammanager import StreamManager
 
 
-def create_client_settings(version="1.0.0", send_cache=409600, headers_max_size=1024000, frame_max_size=10,
-                           content_max_size=10240000, stream_timeout=5, handler_timeout=5):
+def create_client_settings(version="1.0.0",
+                           headers_min_size=1024000, headers_max_size=1024000,
+                           frame_min_size=1024000, frame_max_size=1024000,
+                           content_max_size=10240000, stream_min_timeout=1, stream_timeout=5):
     settings = {"version": str(version),
-                "send_cache": int(send_cache),
+                "headers_min_size": int(headers_min_size),
                 "headers_max_size": int(headers_max_size),
+                "frame_min_size": int(frame_min_size),
                 "frame_max_size": int(frame_max_size),
                 "content_max_size": int(content_max_size),
+                "stream_min_timeout": int(stream_min_timeout),
                 "stream_timeout": int(stream_timeout),
-                "handler_timeout": int(handler_timeout),
                 "default_port": 9000}
     return settings
 
@@ -365,12 +368,17 @@ class CepticClientNew(object):
             s.settimeout(5)
             try:
                 s.connect((host, port))
-            except Exception as e:
-                # TODO: better error handling for server not available and host/port being bad
-                print("connect_ip ERROR: {},{}".format(str(e), (host, port)))
+            except TypeError:
                 s.close()
-                return CepticResponse(494, "Server at {}:{} not available".format(host, port))
-            self.create_new_manager(s, name)
+                raise CepticException("host must be string ({}), port must be int ({})".format(host, port))
+            except Exception:
+                s.close()
+                raise CepticException("Server at {}:{} not available".format(host, port))
+            try:
+                self.create_new_manager(s, name)
+            except CepticException as e:
+                s.close()
+                raise CepticException("Ceptic handshake failed with server: {}".format(str(e)))
         # use existing manager to start new stream
         manager = self.get_manager(name)
         handler = manager.get_handler(manager.create_handler())
@@ -416,7 +424,6 @@ class CepticClientNew(object):
         Perform general ceptic protocol handshake to continue connection
         :param s: socket instance (socket.socket)
         :param name: immutable (string or tuple)
-        :param request:
         :return: CepticResponse instance
         """
         # wrap socket with TLS, handshaking happens automatically
@@ -424,11 +431,56 @@ class CepticClientNew(object):
         try:
             s = self.certificateManager.wrap_socket(s)
         except CertificateManagerException as e:
-            return CepticResponse(498, str(e))
+            s.close()
+            raise e
         # wrap socket with SocketCeptic, to send length of message first
         s = SocketCeptic(s)
+        # send server relevant values
+        stream_settings = {}
+        # send version
+        s.send_raw("{:16}".format(self.settings["version"]))
+        # send frame_min_size
+        s.send_raw("{:16}".format(self.settings["frame_min_size"]))
+        # send frame_max_size
+        s.send_raw("{:16}".format(self.settings["frame_max_size"]))
+        # send header_min_size
+        s.send_raw("{:16}".format(self.settings["headers_min_size"]))
+        # send header_max_size
+        s.send_raw("{:16}".format(self.settings["headers_max_size"]))
+        # send stream_min_timeout
+        s.send_raw("{:4}".format(self.settings["stream_min_timeout"]))
+        # send stream_timeout
+        s.send_raw("{:4}".format(self.settings["stream_timeout"]))
+        # get response
+        response = s.recv_raw(1)
+        # if not positive, get additional info and raise exception
+        if response != "y":
+            error_string = s.recv(1024)
+            raise CepticException("client settings not compatible with server settings: {}".format(error_string))
+        # otherwise receive decided values
+        else:
+            server_frame_max_size_str = s.recv_raw(16).strip()
+            server_headers_max_size_str = s.recv_raw(16).strip()
+            server_stream_timeout_str = s.recv_raw(4).strip()
+            try:
+                stream_settings["frame_max_size"] = int(server_frame_max_size_str)
+                stream_settings["headers_max_size"] = int(server_headers_max_size_str)
+                stream_settings["stream_timeout"] = int(server_stream_timeout_str)
+            except ValueError:
+                raise CepticException("server's received values were not all int, could not proceed: {},{},{}".format(
+                    server_frame_max_size_str, server_frame_max_size_str, server_stream_timeout_str))
+            # make sure server's chosen values are valid for client
+            if stream_settings["frame_max_size"] > self.settings["frame_max_size"]:
+                raise CepticException("server chose frame_max_size ({}) higher than client's ({})".format(
+                    stream_settings["frame_max_size"], self.settings["frame_max_size"]))
+            if stream_settings["headers_max_size"] > self.settings["headers_max_size"]:
+                raise CepticException("server chose headers_max_size ({}) higher than client's ({})".format(
+                    stream_settings["headers_max_size"], self.settings["headers_max_size"]))
+            if stream_settings["stream_timeout"] > self.settings["stream_timeout"]:
+                raise CepticException("server chose stream_timeout ({}) higher than client's ({})".format(
+                    stream_settings["stream_timeout"], self.settings["stream_timeout"]))
         # create stream manager
-        manager = StreamManager.client(s, name, self.settings, self.remove_manager)
+        manager = StreamManager.client(s, name, stream_settings, self.remove_manager)
         self.managerDict[name] = manager
         manager.daemon = True
         manager.start()
@@ -452,9 +504,7 @@ class CepticClientNew(object):
         # wait for response
         print("connect_protocol_client: waiting for response...")
         response_data = stream.get_full_data()
-        # response_frame = stream.get_next_frame()
         print("connect_protocol_client: got response: {}".format(response_data))
-        # print("connect_protocol_client: got response: {}".format(response_frame.get_data()))
         # get command_func and settings for command
         command_func, settings = self.endpointManager.get_command(request.command)
         # set request settings
