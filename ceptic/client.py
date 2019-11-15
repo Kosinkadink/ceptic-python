@@ -8,13 +8,14 @@ from ceptic.common import CepticStatusCode, CepticResponse, CepticRequest, Cepti
 from ceptic.common import create_command_settings, decode_unicode_hook
 from ceptic.managers.endpointmanager import EndpointManager
 from ceptic.managers.certificatemanager import CertificateManager, CertificateManagerException, create_ssl_config
-from ceptic.managers.streammanager import StreamManager
+from ceptic.managers.streammanager import StreamManager, StreamClosedException
 
 
 def create_client_settings(version="1.0.0",
                            headers_min_size=1024000, headers_max_size=1024000,
                            frame_min_size=1024000, frame_max_size=1024000,
-                           content_max_size=10240000, stream_min_timeout=1, stream_timeout=5):
+                           content_max_size=10240000,
+                           stream_min_timeout=1, stream_timeout=5):
     settings = {"version": str(version),
                 "headers_min_size": int(headers_min_size),
                 "headers_max_size": int(headers_max_size),
@@ -356,12 +357,11 @@ class CepticClientNew(object):
             request = CepticRequest(command=command, endpoint=endpoint, headers=headers, body=body)
             self.verify_request(request)
         except ValueError as e:
-            raise e
+            raise CepticException(e)
         # if a stream manager does not exist for this host/port combo, open one
-        if force_new_stream:
+        name = (host, port)
+        if force_new_stream or self.is_manager_full(name):
             name = uuid.uuid4()
-        else:
-            name = (host, port)
         if not self.get_manager(name):
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             # s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
@@ -382,7 +382,6 @@ class CepticClientNew(object):
         # use existing manager to start new stream
         manager = self.get_manager(name)
         handler = manager.get_handler(manager.create_handler())
-        print("going to execute connect_protocol_client")
         return self.connect_protocol_client(handler, request)
 
     def connect_url(self, url, command, headers=None, body=None, force_new_stream=False):
@@ -427,7 +426,6 @@ class CepticClientNew(object):
         :return: CepticResponse instance
         """
         # wrap socket with TLS, handshaking happens automatically
-        print("create_new_manager")
         try:
             s = self.certificateManager.wrap_socket(s)
         except CertificateManagerException as e:
@@ -438,19 +436,19 @@ class CepticClientNew(object):
         # send server relevant values
         stream_settings = {}
         # send version
-        s.send_raw("{:16}".format(self.settings["version"]))
+        s.send_raw(format(self.settings["version"], ">16"))
         # send frame_min_size
-        s.send_raw("{:16}".format(self.settings["frame_min_size"]))
+        s.send_raw(format(self.settings["frame_min_size"], ">16"))
         # send frame_max_size
-        s.send_raw("{:16}".format(self.settings["frame_max_size"]))
+        s.send_raw(format(self.settings["frame_max_size"], ">16"))
         # send header_min_size
-        s.send_raw("{:16}".format(self.settings["headers_min_size"]))
+        s.send_raw(format(self.settings["headers_min_size"], ">16"))
         # send header_max_size
-        s.send_raw("{:16}".format(self.settings["headers_max_size"]))
+        s.send_raw(format(self.settings["headers_max_size"], ">16"))
         # send stream_min_timeout
-        s.send_raw("{:4}".format(self.settings["stream_min_timeout"]))
+        s.send_raw(format(self.settings["stream_min_timeout"], ">4"))
         # send stream_timeout
-        s.send_raw("{:4}".format(self.settings["stream_timeout"]))
+        s.send_raw(format(self.settings["stream_timeout"], ">4"))
         # get response
         response = s.recv_raw(1)
         # if not positive, get additional info and raise exception
@@ -462,13 +460,17 @@ class CepticClientNew(object):
             server_frame_max_size_str = s.recv_raw(16).strip()
             server_headers_max_size_str = s.recv_raw(16).strip()
             server_stream_timeout_str = s.recv_raw(4).strip()
+            handler_max_count_str = s.recv_raw(4).strip()
             try:
                 stream_settings["frame_max_size"] = int(server_frame_max_size_str)
                 stream_settings["headers_max_size"] = int(server_headers_max_size_str)
                 stream_settings["stream_timeout"] = int(server_stream_timeout_str)
+                stream_settings["handler_max_count"] = int(handler_max_count_str)
             except ValueError:
-                raise CepticException("server's received values were not all int, could not proceed: {},{},{}".format(
-                    server_frame_max_size_str, server_frame_max_size_str, server_stream_timeout_str))
+                error_msg = "server's received values were not all int, could not proceed: {},{},{},{}".format(
+                    server_frame_max_size_str, server_frame_max_size_str, server_stream_timeout_str,
+                    handler_max_count_str)
+                raise CepticException(error_msg)
             # make sure server's chosen values are valid for client
             if stream_settings["frame_max_size"] > self.settings["frame_max_size"]:
                 raise CepticException("server chose frame_max_size ({}) higher than client's ({})".format(
@@ -488,6 +490,12 @@ class CepticClientNew(object):
     def get_manager(self, name):
         return self.managerDict.get(name)
 
+    def is_manager_full(self, name):
+        manager = self.get_manager(name)
+        if not manager:
+            return False
+        return manager.is_handler_limit_reached()
+
     def connect_protocol_client(self, stream, request):
         """
         Perform general ceptic protocol handshake to continue connection
@@ -495,40 +503,27 @@ class CepticClientNew(object):
         :param request:
         :return: CepticResponse instance
         """
-        # create frames from request
-        header_frames = request.generate_frames(stream.stream_id, stream.frame_size)
-
-        # send frames
-        for frame in header_frames:
-            stream.send(frame)
+        # create frames from request and send
+        stream.sendall(request.generate_frames(stream))
         # wait for response
-        print("connect_protocol_client: waiting for response...")
-        response_data = stream.get_full_data()
-        print("connect_protocol_client: got response: {}".format(response_data))
-        # get command_func and settings for command
-        command_func, settings = self.endpointManager.get_command(request.command)
-        # set request settings
-        request.settings = settings
-
-        # check if command exists; stop connection if not
-        # try:
-        #     command_func, settings = self.endpointManager.get_command(request.command)
-        # except KeyError:
-        #     stream.close()
-        #     return CepticResponse(499, "client does not recognize command: {}".format(request.command))
-        # set request settings
-        # request.settings = settings
-        # get response from server
-        ##endpoint_found = s.recv(1)
-        # if good response, perform command
-        ##if endpoint_found == "y":
-        ##    response = command_func(s, request)
-        ##    return response
-        # otherwise, receive response, close socket, and return
-        ##else:
-        ##    response = CepticResponse.get_with_socket(s, 1024)
-        ##    s.close()
-        ##    return response
+        try:
+            response_data = stream.get_full_data()
+        except StreamClosedException as e:
+            return CepticResponse(400, errors=str(e))
+        response = CepticResponse.from_data(response_data)
+        # if successful response, continue
+        if response.is_success():
+            # get command_func and settings for command
+            command_func, settings = self.endpointManager.get_command(request.command)
+            # set request settings
+            request.settings = settings
+            # perform command and get back response
+            response = command_func(stream, request)
+            return response
+        # otherwise return failed response
+        else:
+            stream.send_close()
+            return response
 
     def stop(self):
         """

@@ -17,8 +17,9 @@ from ceptic.managers.streammanager import StreamManager
 
 def create_server_settings(port=9000, version="1.0.0",
                            headers_min_size=1024000, headers_max_size=1024000,
-                           frame_min_size=1024000, frame_max_size=1024000, content_max_size=10240000,
-                           stream_min_timeout=5, stream_timeout=5, block_on_start=False,
+                           frame_min_size=1024000, frame_max_size=1024000,
+                           content_max_size=10240000,
+                           stream_min_timeout=5, stream_timeout=5, handler_max_count=0, block_on_start=False,
                            use_processes=False, max_parallel_count=1, request_queue_size=10, verbose=False):
     settings = {"port": int(port),
                 "version": str(version),
@@ -29,6 +30,7 @@ def create_server_settings(port=9000, version="1.0.0",
                 "content_max_size": int(content_max_size),
                 "stream_min_timeout": int(stream_min_timeout),
                 "stream_timeout": int(stream_timeout),
+                "handler_max_count": int(handler_max_count),
                 "block_on_start": bool(block_on_start),
                 "use_processes": bool(use_processes),
                 "max_parallel_count": int(max_parallel_count),
@@ -470,7 +472,6 @@ class CepticServerNew(object):
             for sock in ready_to_read:
                 # establish a connection
                 if sock == serversocket:
-                    print("about to accept socket")
                     s, addr = serversocket.accept()
                     # s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                     newthread = threading.Thread(target=self.handle_new_socket, args=(s, addr))
@@ -495,7 +496,6 @@ class CepticServerNew(object):
         :param addr: socket address
         :return: None
         """
-        print("handle_new_socket")
         if self.settings["verbose"]:
             print("Got a connection from {}".format(addr))
         # wrap socket with TLS, handshaking happens automatically
@@ -580,10 +580,12 @@ class CepticServerNew(object):
             return
         # otherwise send positive response along with decided values
         else:
+            stream_settings["handler_max_count"] = self.settings["handler_max_count"]
             s.send_raw("y")
-            s.send_raw("{:16}".format(stream_settings["frame_max_size"]))
-            s.send_raw("{:16}".format(stream_settings["headers_max_size"]))
-            s.send_raw("{:4}".format(stream_settings["stream_timeout"]))
+            s.send_raw(format(stream_settings["frame_max_size"], ">16"))
+            s.send_raw(format(stream_settings["headers_max_size"], ">16"))
+            s.send_raw(format(stream_settings["stream_timeout"], ">4"))
+            s.send_raw(format(stream_settings["handler_max_count"], ">4"))
         # create StreamManager
         manager_uuid = uuid.uuid4()
         manager = StreamManager.server(s, manager_uuid, stream_settings, CepticServerNew.handle_new_connection,
@@ -594,19 +596,16 @@ class CepticServerNew(object):
 
     @staticmethod
     def handle_new_connection(stream, server_settings, endpoint_manager):
-        # get request data from frames
-        request_data = stream.get_full_header_data()
-        print("SERVER: GOT FULL HEADER DATA: {}".format(request_data))
         # get request from request data
-        request = CepticRequest.from_data(request_data)
+        request = CepticRequest.from_data(stream.get_full_header_data())
         # began checking validity of request
-        errors = {"errors": list()}
+        errors = []
         # check that command and endpoint are of valid length
         if len(request.command) > 128:
-            errors["errors"].append(
+            errors.append(
                 "command too long; should be no more than 128 characters, but was {}".format(len(request.command)))
         if len(request.endpoint) > 128:
-            errors["errors"].append(
+            errors.append(
                 "endpoint too long; should be no more than 128 characters, but was {}".format(len(request.endpoint)))
         # try to get endpoint objects from endpointManager
         command_func = handler = variable_dict = None
@@ -622,23 +621,21 @@ class CepticServerNew(object):
             # set server settings as request's config settings
             request.config_settings = server_settings
         except KeyError as e:
-            errors["errors"].append("endpoint of type {} not recognized: {}".format(request.command, request.endpoint))
+            errors.append("endpoint of type {} not recognized: {}".format(request.command, request.endpoint))
         # check that Content-Length header (if present) is of allowed length
         if "Content-Length" in request.headers:
             # if content length is longer than set max body length, invalid
             if request.headers["Content-Length"] > request.settings["maxBodyLength"]:
-                errors["errors"].append("Content-Length exceeds server's allowed max body length of {}".format(
+                errors.append("Content-Length exceeds server's allowed max body length of {}".format(
                     request.settings["maxBodyLength"]))
-        # if no errors, continue
-        if not len(errors["errors"]):
+        # if no errors, send positive response and continue
+        if not len(errors):
+            stream.sendall(CepticResponse(200, "y").generate_frames(stream))
             command_func(stream, request, handler, variable_dict)
         # otherwise send info back
         else:
             # send frame with error and bad status
-            response_frames = CepticResponse(400, json.dumps(errors), headers={"Content-Type": "json"}).generate_frames(
-                stream.stream_id, stream.frame_size)
-            for frame in response_frames:
-                stream.send(frame)
+            stream.sendall(CepticResponse(400, errors=errors).generate_frames(stream))
             stream.send_close()
 
     def route(self, endpoint, command, settings_override=None):

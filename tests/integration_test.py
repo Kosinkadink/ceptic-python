@@ -442,11 +442,11 @@ if __name__ == "__main__":
     # start server
     test_server.start()
     default_headers = dict()
-    # try:
-    test_client.connect_url("localhost:9000/", "get", headers=default_headers)
+    #try:
+    print(test_client.connect_url("localhost:9000/", "get", headers=default_headers))
     # test_client.connect_ip("notavalidaddress9000/", None, "get", "/", headers=default_headers)
-    # except Exception as e:
-    #    print(str(e))
+    #except Exception as e:
+    #    print("{}: {}".format(str(type(e)),str(e)))
     sleep(7)
     test_server.stop()
     while not test_server.is_stopped():

@@ -57,7 +57,7 @@ class SocketCepticPy2(SocketCeptic):
         # if there is nothing to send, then don't just send size
         if not msg:
             return
-        total_size = format(len(msg), "<16")
+        total_size = format(len(msg), ">16")
         self.s.sendall(total_size + msg)
 
     def sendall(self, msg):
@@ -152,7 +152,7 @@ class SocketCepticPy3(SocketCeptic):
         # if there is nothing to send, then don't just send size
         if not msg:
             return
-        total_size = format(len(msg), "<16")
+        total_size = format(len(msg), ">16")
         # if it is already in bytes, do not encode it
         try:
             self.s.sendall(total_size.encode() + msg.encode())

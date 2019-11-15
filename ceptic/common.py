@@ -70,11 +70,14 @@ class CepticRequest(object):
         data = "{}\r\n{}\r\n{}".format(self.command, self.endpoint, json.dumps(self.headers))
         return StreamFrame.create_header(stream_id, data)
 
-    def generate_frames(self, stream_id, frame_size):
+    def generate_frames(self, stream):
         data = "{}\r\n{}\r\n{}".format(self.command, self.endpoint, json.dumps(self.headers))
-        generator = StreamFrameGen(stream_id, frame_size).from_data(data)
+        generator = StreamFrameGen(stream.stream_id, stream.frame_size).from_data(data)
         # make first frame type header
-        frame = next(generator)
+        try:
+            frame = next(generator)
+        except StopIteration:
+            return
         frame.set_to_header()
         yield frame
         for frame in generator:
@@ -87,27 +90,55 @@ class CepticRequest(object):
 
 
 class CepticResponse(object):
-    def __init__(self, status, msg, headers=None, stream=None):
+    def __init__(self, status, msg=None, headers=None, errors=None, stream=None):
         self.status = int(status)
         self.headers = headers
         self.msg = msg
         self.stream = stream
+        if errors:
+            if not self.headers:
+                self.headers = {}
+            self.headers["errors"] = errors
+
+    @property
+    def errors(self):
+        return self.headers.get["errors"]
+
+    def is_success(self):
+        return CepticStatusCode.is_success(self.status)
+
+    def is_error(self):
+        return CepticStatusCode.is_error(self.status)
+
+    def is_client_error(self):
+        return CepticStatusCode.is_client_error(self.status)
+
+    def is_server_error(self):
+        return CepticStatusCode.is_server_error(self.status)
 
     def get_dict(self):
-        return {"status": self.status, "msg": self.msg}
+        return {"status": self.status, "msg": self.msg, "headers": self.headers}
 
     def create_frame(self, stream_id):
-        data = "{}\r\n{}\r\n{}".format(self.status, self.headers, self.msg)
+        data = "{}\r\n{}".format(self.status, self.headers)
         return StreamFrame.create_header(stream_id, data)
 
-    def generate_frames(self, stream_id, frame_size):
-        data = "{}\r\n{}\r\n{}".format(self.status, self.headers, self.msg)
-        generator = StreamFrameGen(stream_id, frame_size).from_data(data)
+    def generate_frames(self, stream):
+        data = "{}\r\n{}".format(self.status, json.dumps(self.headers))
+        generator = StreamFrameGen(stream.stream_id, stream.frame_size).from_data(data)
         for frame in generator:
             yield frame
 
     @classmethod
-    def get_from_frame(cls, frame):
+    def from_data(cls, data):
+        status, json_headers = data.split("\r\n")
+        if json_headers:
+            return cls(status, headers=json.loads(json_headers, object_pairs_hook=decode_unicode_hook))
+        else:
+            return cls(status)
+
+    @classmethod
+    def from_frame(cls, frame):
         status, json_headers, msg = frame.get_data().split("\r\n")
         return cls(status, msg, headers=json.loads(json_headers, object_pairs_hook=decode_unicode_hook))
 

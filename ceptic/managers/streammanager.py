@@ -22,6 +22,20 @@ class StreamException(StreamManagerException):
     pass
 
 
+class StreamClosedException(StreamException):
+    """
+    Stream Closed Exception, inherits from StreamException
+    """
+    pass
+
+
+class StreamHandlerStoppedException(StreamClosedException):
+    """
+    Stream Handler Stopped Exception, inherits from StreamClosedException
+    """
+    pass
+
+
 class StreamTimeoutException(StreamException):
     """
     Stream Timeout Exception, inherits from StreamException
@@ -63,26 +77,34 @@ class StreamManager(threading.Thread):
         self.isRunning = False
         self.use_processes = False
         self.delay_time = 0.001
+        self.handler_count = 0
         # threads
         self.receive_thread = threading.Thread(target=self.receive_frames)
         self.receive_thread.daemon = True
         # StreamHandler dict
         self.streams = {}
-        #
+        self.streams_to_remove = deque()
+
+    def is_handler_limit_reached(self):
+        if self.settings["handler_max_count"]:
+            if self.handler_count >= self.settings["handler_max_count"]:
+                return True
+        return False
+
+    def get_handler_count(self):
+        return self.handler_count
 
     def run(self):
         # start receive thread
         self.isRunning = True
         self.receive_thread.start()
-        streams_to_remove = []
         while not self.shouldStop.is_set():
             # iterate through streams
             for stream_id in self.streams:
                 stream = self.streams[stream_id]
                 # check if stream has timed out
-                timed_out = stream.is_timed_out()
                 if stream.is_timed_out():
-                    streams_to_remove.append(stream_id)
+                    self.streams_to_remove.append(stream_id)
                     continue
                 # if a frame is ready to be sent, send it
                 if stream.is_ready_to_send():
@@ -90,15 +112,15 @@ class StreamManager(threading.Thread):
                     frame_to_send.send(self.s)
                     # if sent a close frame, close handler
                     if frame_to_send.is_close():
-                        streams_to_remove.append(stream_id)
+                        self.streams_to_remove.append(stream_id)
                     elif frame_to_send.is_close_all():
                         self.stop()
                         break
                     # update keep alive time; frame sent, so stream must be active
                     self.keep_alive_timer.update()
             # remove timed out streams
-            while len(streams_to_remove):
-                self.close_handler(streams_to_remove.pop(0))
+            while len(self.streams_to_remove):
+                self.close_handler(self.streams_to_remove.popleft())
             sleep(self.delay_time)
             self.check_for_timeout()
         # wait for receive_thread to fully close
@@ -125,15 +147,24 @@ class StreamManager(threading.Thread):
                 # if keep_alive, ignore; just there to keep connection alive
                 if received_frame.is_keep_alive():
                     pass
-                # if stream is to be closed, stop appropriate stream and remove from dict
+                # if stream is to be closed, add frame, stop appropriate stream and remove from dict
                 if received_frame.is_close():
-                    self.close_handler(received_frame.stream_id)
+                    try:
+                        self.get_handler(received_frame.get_stream_id()).add_to_read(received_frame)
+                    except (KeyError, AttributeError):
+                        continue
+                    self.streams_to_remove.append(received_frame.stream_id)
                 # if all streams are to be closed (including socket), stop all and stop running
                 elif received_frame.is_close_all():
                     self.close_all_handlers()
                     self.stop()
                 # if SERVER and if frame of type header, create new stream stream and pass it to conn_handler_func
                 elif self.is_server and received_frame.is_header():
+                    # if over limit (and limit exists), prepare to close handler after creation
+                    should_decline = False
+                    if self.is_handler_limit_reached():
+                        should_decline = True
+                    # create handler and forward received frame
                     stream_id = self.create_handler(stream_id=received_frame.get_stream_id())
                     self.streams[stream_id].add_to_read(received_frame)
                     # handle in new thread
@@ -141,14 +172,21 @@ class StreamManager(threading.Thread):
                         self.streams[stream_id], self.settings, self.conn_func_args))
                     conn_thread.daemon = True
                     conn_thread.start()
+                    # close handler if over limit
+                    if should_decline:
+                        self.get_handler(stream_id).send_close()
                 else:
-                    self.get_handler(received_frame.get_stream_id()).add_to_read(received_frame)
+                    try:
+                        self.get_handler(received_frame.get_stream_id()).add_to_read(received_frame)
+                    except KeyError:
+                        continue
 
     def create_handler(self, stream_id=None):
         if stream_id is None:
             stream_id = str(uuid.uuid4())
         self.streams[stream_id] = StreamHandler(stream_id=stream_id, settings=self.settings,
                                                 use_processes=self.use_processes)
+        self.handler_count += 1  # add to handler_count
         return stream_id
 
     def close_handler(self, stream_id):
@@ -157,6 +195,7 @@ class StreamManager(threading.Thread):
         if stream:
             stream.stop()
             self.streams.pop(stream_id)
+            self.handler_count -= 1  # subtract from handler_count
             print("handler with stream_id {} has been closed for manager {}".format(stream_id, self.name))
 
     def close_all_handlers(self):
@@ -236,20 +275,29 @@ class StreamHandler(object):
             return True
         return False
 
-    def send_close(self):
+    def send_close(self, data=""):
+        try:
+            self.send(StreamFrame.create_close(self.stream_id, data=data))
+        except StreamHandlerStoppedException:
+            pass
         self.stop()
-        self.send(StreamFrame.create_close(self.stream_id))
 
     def send(self, frame):
         """
         Adds frame to send queue
         :param frame: StreamFrame instance
         """
+        if self.is_stopped():
+            raise StreamHandlerStoppedException("handler is stopped; cannot send frames through a stopped handler")
         self.keep_alive_timer.update()
         if self.use_processes:
             pass
         else:
             self.frames_to_send.append(frame)
+
+    def sendall(self, frames):
+        for frame in frames:
+            self.send(frame)
 
     def add_to_read(self, frame):
         """
@@ -270,18 +318,36 @@ class StreamHandler(object):
         if timeout == 0:
             while not self.is_ready_to_read() and not self.is_stopped():
                 sleep(self.delay_time)
-            return self.get_ready_to_read()
+            if self.is_stopped():
+                raise StreamHandlerStoppedException("handler is stopped; cannot receive frames")
+            frame = self.get_ready_to_read()
+            # if a close frame, raise exception
+            if frame.is_close():
+                raise StreamClosedException(frame.get_data())
+            return frame
         # if negative time (i.e. -1) do not block and immediately return
         elif timeout < 0:
-            return self.get_ready_to_read()
+            if self.is_stopped():
+                raise StreamHandlerStoppedException("handler is stopped; cannot receive frames")
+            frame = self.get_ready_to_read()
+            # if a close frame, raise exception
+            if frame.is_close():
+                raise StreamClosedException(frame.get_data())
+            return frame
         # wait up to specified time; if no frame received by then, return
         timer = Timer()
         timer.start()
         while not self.is_ready_to_read() and not self.is_stopped():
             if not timer.get_time() < timeout:
-                raise StreamTimeoutException()
+                raise StreamTimeoutException("handler {} has timed out getting next frame".format(self.stream_id))
             sleep(self.delay_time)
-        return self.get_ready_to_read()
+        if self.is_stopped():
+            raise StreamHandlerStoppedException("handler is stopped; cannot receive frames")
+        frame = self.get_ready_to_read()
+        # if a close frame, raise exception
+        if frame.is_close():
+            raise StreamClosedException(frame.get_data())
+        return frame
 
     def get_full_data(self, timeout=None, max_length=None):
         """
@@ -512,7 +578,7 @@ class StreamFrame(object):
         if self.data:
             s.sendall(self.data)
         else:
-            s.send_raw('%16d' % 0)
+            s.send_raw(format(0, ">16"))
 
     def is_header(self):
         """
@@ -634,7 +700,7 @@ class StreamFrame(object):
         return cls(stream_id, StreamFrame.enum_type["data"], StreamFrame.enum_info["continue"], data)
 
     @classmethod
-    def type_keep_alive(cls, stream_id):
+    def create_keep_alive(cls, stream_id):
         """
         Returns frame initialized as keep_alive type
         :return: StreamFrame instance
@@ -642,12 +708,12 @@ class StreamFrame(object):
         return cls(stream_id, StreamFrame.enum_type["keep_alive"], StreamFrame.enum_info["end"])
 
     @classmethod
-    def create_close(cls, stream_id):
+    def create_close(cls, stream_id, data=""):
         """
         Returns frame initialized as close type
         :return: StreamFrame instance
         """
-        return cls(stream_id, StreamFrame.enum_type["close"], StreamFrame.enum_info["end"])
+        return cls(stream_id, StreamFrame.enum_type["close"], StreamFrame.enum_info["end"], data)
 
     @classmethod
     def create_close_all(cls):
