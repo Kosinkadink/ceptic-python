@@ -73,13 +73,13 @@ class StreamManager(threading.Thread):
         self.conn_func_args = conn_func_args
         # control vars
         self.shouldStop = threading.Event()
+        self.send_event = threading.Event()
         self.keep_alive_timer = Timer()
         self.isRunning = False
         self.use_processes = False
         self.handler_count = 0
         # timeouts/delays
-        self.delay_time = 0.001
-        self.handler_delay_time = 0.001
+        self.send_event_timeout = 0.1
         self.clean_delay_time = 0.1
         self.select_timeout = 0.1
         # threads
@@ -109,32 +109,29 @@ class StreamManager(threading.Thread):
         # start clean thread
         self.clean_thread.start()
         while not self.shouldStop.is_set():
-            frame_still_to_be_sent = False
             # iterate through streams
-            streams = list(self.streams)
-            for stream_id in streams:
-                stream = self.streams[stream_id]
-                # if a frame is ready to be sent, send it
-                if stream.is_ready_to_send():
-                    frame_to_send = stream.get_ready_to_send()
-                    frame_to_send.send(self.s)
-                    # if sent a close frame, close handler
-                    if frame_to_send.is_close():
-                        self.streams_to_remove.append(stream_id)
-                    elif frame_to_send.is_close_all():
-                        self.stop()
-                        break
-                    # update keep alive time; frame sent, so stream must be active
-                    self.keep_alive_timer.update()
-                # check if there are still frames to be sent from this stream
-                if stream.is_ready_to_send():
-                    frame_still_to_be_sent = True
-            # delay if no frames are still to be sent
-            if not frame_still_to_be_sent:
-                sleep(self.delay_time)
-        # wait for receive_thread to fully close
+            ready_to_read = self.send_event.wait(self.send_event_timeout)
+            if ready_to_read:
+                self.send_event.clear()
+                streams = list(self.streams)
+                for stream_id in streams:
+                    stream = self.streams[stream_id]
+                    # while a frame is ready to be sent, send it
+                    while stream.is_ready_to_send() and not self.shouldStop.is_set():
+                        frame_to_send = stream.get_ready_to_send()
+                        frame_to_send.send(self.s)
+                        # if sent a close frame, close handler
+                        if frame_to_send.is_close():
+                            self.streams_to_remove.append(stream_id)
+                        elif frame_to_send.is_close_all():
+                            self.stop()
+                            break
+                        # update keep alive time; frame sent, so stream must be active
+                        self.keep_alive_timer.update()
+        # wait for receive and clean threads to close
         self.receive_thread.join()
         self.clean_thread.join()
+        # close any remaining headers
         self.close_all_handlers()
         self.isRunning = False
 
@@ -206,8 +203,7 @@ class StreamManager(threading.Thread):
     def create_handler(self, stream_id=None):
         if stream_id is None:
             stream_id = str(uuid.uuid4())
-        self.streams[stream_id] = StreamHandler(stream_id=stream_id, settings=self.settings,
-                                                delay_time=self.handler_delay_time,
+        self.streams[stream_id] = StreamHandler(stream_id=stream_id, settings=self.settings, send_event=self.send_event,
                                                 use_processes=self.use_processes)
         self.handler_count += 1  # add to handler_count
         return stream_id
@@ -253,14 +249,16 @@ class StreamManager(threading.Thread):
 
 
 class StreamHandler(object):
-    def __init__(self, stream_id, settings, delay_time=0.001, use_processes=False):
+    def __init__(self, stream_id, settings, send_event, use_processes=False):
         self.stream_id = stream_id
         self.settings = settings
-        self.delay_time = delay_time
+        self.send_event = send_event
         self.use_processes = use_processes
         # event for stopping stream
         self.shouldStop = threading.Event()
         self.change_id = None
+        # event for received frame
+        self.read_or_stop_event = threading.Event()
         # pipes for multiprocessing purposes
         self.manager_pipe = None
         self.handler_pipe = None
@@ -286,9 +284,12 @@ class StreamHandler(object):
         return self.settings["stream_timeout"]
 
     def stop(self):
+        self.read_or_stop_event.set()
         self.shouldStop.set()
 
     def is_stopped(self):
+        if self.shouldStop.is_set():
+            self.read_or_stop_event.set()
         return self.shouldStop.is_set()
 
     def is_timed_out(self):
@@ -317,6 +318,7 @@ class StreamHandler(object):
             pass
         else:
             self.frames_to_send.append(frame)
+            self.send_event.set()
 
     def sendall(self, frames):
         for frame in frames:
@@ -333,14 +335,18 @@ class StreamHandler(object):
             self.manager_pipe.send(frame)
         else:
             self.frames_to_read.append(frame)
+            self.read_or_stop_event.set()
 
     def get_next_frame(self, timeout=None):
         if timeout is None:
             timeout = self.settings["stream_timeout"]
         # if timeout is 0, then block and wait to get next frame
         if timeout == 0:
-            while not self.is_ready_to_read() and not self.is_stopped():
-                sleep(self.delay_time)
+            if not self.is_ready_to_read() and not self.is_stopped():
+                # wait for read_or_stop_event
+                self.read_or_stop_event.wait(None)
+            # clear read event
+            self.read_or_stop_event.clear()
             if self.is_stopped() and not self.is_ready_to_read():
                 raise StreamHandlerStoppedException("handler is stopped; cannot receive frames")
             frame = self.get_ready_to_read()
@@ -360,10 +366,15 @@ class StreamHandler(object):
         # wait up to specified time; if no frame received by then, return
         timer = Timer()
         timer.start()
-        while not self.is_ready_to_read() and not self.is_stopped():
-            if not timer.get_time() < timeout:
+        if not self.is_ready_to_read() and not self.is_stopped():
+            # wait for read event
+            triggered = self.read_or_stop_event.wait(timeout)
+            # if not triggered, must have timed out
+            if not triggered:
                 raise StreamTimeoutException("handler {} has timed out getting next frame".format(self.stream_id))
-            sleep(self.delay_time)
+        # clear read event
+        self.read_or_stop_event.clear()
+        # if handler is stopped and no frames left to read, raise exception
         if self.is_stopped() and not self.is_ready_to_read():
             raise StreamHandlerStoppedException("handler is stopped; cannot receive frames")
         frame = self.get_ready_to_read()
@@ -452,6 +463,8 @@ class StreamHandler(object):
         Returns if a frame is ready to be read
         :return: boolean corresponding to if a frame is ready to be read
         """
+        if len(self.frames_to_read) > 0:
+            self.read_or_stop_event.set()
         return len(self.frames_to_read) > 0
 
     def get_ready_to_send(self):

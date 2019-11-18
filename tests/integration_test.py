@@ -284,7 +284,8 @@ def test_get_multiple_requests_series(server_all_files, client_all_files):
 def test_get_multiple_requests_parallel(server_all_files, client_all_files):
     _here = test_get_multiple_requests_parallel
     # init server and client
-    with server_all_files(settings=create_server_settings(verbose=False, request_queue_size=100, stream_timeout=5)) as app:
+    with server_all_files(
+            settings=create_server_settings(verbose=False, request_queue_size=100, stream_timeout=5)) as app:
         _here.server = app
         client = client_all_files(settings=create_client_settings(stream_timeout=5))
 
