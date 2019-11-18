@@ -8,11 +8,12 @@ import uuid
 
 from sys import version_info
 from ceptic.network import SocketCeptic
-from ceptic.common import CepticRequest, CepticCommands, CepticResponse, CepticException
+from ceptic.common import CepticRequest, CepticResponse, CepticStatusCode, CepticException
 from ceptic.common import create_command_settings, decode_unicode_hook
 from ceptic.managers.endpointmanager import EndpointManager
 from ceptic.managers.certificatemanager import CertificateManager, CertificateManagerException, create_ssl_config
-from ceptic.managers.streammanager import StreamManager
+from ceptic.managers.streammanager import StreamManager, StreamException, StreamClosedException, \
+    StreamTotalDataSizeException, StreamFrameGen
 
 
 def create_server_settings(port=9000, version="1.0.0",
@@ -71,7 +72,7 @@ def wrap_server_command(func):
 
 
 @wrap_server_command
-def basic_server_command(s, request, endpoint_func, endpoint_dict):
+def old_basic_server_command(s, request, endpoint_func, endpoint_dict):
     response = endpoint_func(request, **endpoint_dict)
     if not isinstance(response, CepticResponse):
         try:
@@ -93,7 +94,7 @@ def basic_server_command(s, request, endpoint_func, endpoint_dict):
     response.send_with_socket(s)
 
 
-class CepticServer(object):
+class CepticServerOld(object):
 
     def __init__(self, settings, certfile=None, keyfile=None, cafile=None, secure=True):
         self.settings = settings
@@ -123,25 +124,25 @@ class CepticServer(object):
         # add get command
         self.endpointManager.add_command(
             "get",
-            basic_server_command,
+            old_basic_server_command,
             create_command_settings(maxMsgLength=2048000000, maxBodyLength=2048000000)
         )
         # add post command
         self.endpointManager.add_command(
             "post",
-            basic_server_command,
+            old_basic_server_command,
             create_command_settings(maxMsgLength=2048000000, maxBodyLength=2048000000)
         )
         # add update command
         self.endpointManager.add_command(
             "update",
-            basic_server_command,
+            old_basic_server_command,
             create_command_settings(maxMsgLength=2048000000, maxBodyLength=2048000000)
         )
         # add delete command
         self.endpointManager.add_command(
             "delete",
-            basic_server_command,
+            old_basic_server_command,
             create_command_settings(maxMsgLength=2048000000, maxBodyLength=2048000000)
         )
 
@@ -290,58 +291,71 @@ class CepticServer(object):
         return self.shouldStop and not self.isRunning
 
 
-def wrap_server_stream_command(func):
-    """
-    Decorator for server-side commands
-    """
-
-    @functools.wraps(func)
-    def decorator_server_command(s, request, endpoint_func, endpoint_dict=None):
-        # get body if content length header is present
-        if "Content-Length" in request.headers:
-            # if content length is longer than set max body length, invalid
-            if request.headers["Content-Length"] > request.settings["maxBodyLength"]:
-                s.sendall("n")
-                response = CepticResponse(400, "Content-Length exceeds server's allowed max body length of {}".format(
-                    request.settings["maxBodyLength"]))
-                response.send_with_socket(s)
-                s.close()
-                return
-            s.sendall("y")
-            # receive alloted amount of bytes
-            request.body = s.recv(request.headers["Content-Length"])
-        # perform command function with appropriate params
+def basic_server_command(stream, request, endpoint_func, endpoint_dict):
+    # get body if content length header is present
+    if request.content_length:
+        # TODO: Add file transfer functionality
         try:
-            func(s, request, endpoint_func, endpoint_dict)
-        except Exception:
-            pass
-        # close connection
-        s.close()
-
-    return decorator_server_command
-
-
-@wrap_server_stream_command
-def stream_server_command(s, request, endpoint_func, endpoint_dict):
-    response = endpoint_func(request, **endpoint_dict)
+            request.body = stream.get_full_data(max_length=request.content_length)
+        except StreamTotalDataSizeException:
+            stream.send_close("body received is greater than reported content_length")
+            return
+        except StreamException:
+            return
+    # set request stream to local stream
+    request.stream = stream
+    # perform command function with appropriate params
+    response = None
+    try:
+        response = endpoint_func(request, **endpoint_dict)
+    except Exception:
+        stream.send_close()
+        return
+    # if CepticResponse not returned, try to parse as tuple and create CepticResponse
     if not isinstance(response, CepticResponse):
         try:
-            status = int(response[0])
-            msg = str(response[1])
-            stream = None
-            if len(response) == 3:
-                stream = response[2]
-                # assert isinstance(stream, CepticStream)
-            response = CepticResponse(status, msg, stream)
+            response_tuple = ()
+            if not isinstance(response, int):
+                response_tuple = tuple(response)
+            else:
+                response_tuple = (response,)
+            status = int(response_tuple[0])
+            msg = None
+            headers = None
+            errors = None
+            # if error status, assume error message included
+            if len(response_tuple) > 1:
+                if CepticStatusCode.is_error(status):
+                    errors = str(response_tuple[1])
+                else:
+                    msg = str(response_tuple[1])
+            # assume third item is headers
+            if len(response_tuple) > 2:
+                if not isinstance(response_tuple[2], dict):
+                    raise ValueError("3rd argument must be type dict")
+                headers = response_tuple[2]
+            response = CepticResponse(status, msg, headers, errors)
         except Exception as e:
             error_response = CepticResponse(500,
-                                            "endpoint returned invalid data type '{}'' on server".format(
+                                            errors="endpoint returned invalid data type '{}'' on server".format(
                                                 type(response)))
-            error_response.send_with_socket(s)
-            raise CepticException(
-                "expected endpoint_func to return CepticResponse instance, but returned '{}' instead".format(
-                    type(response)))
-    response.send_with_socket(s)
+            print(request.config_settings)
+            if request.config_settings["verbose"]:
+                print("Exception type ({}) raised while generating response: {}".format(type(e), str(e)))
+            stream.sendall(error_response.generate_frames(stream))
+            return
+    stream.sendall(response.generate_frames(stream))
+    # if Content-Length header present, send response body
+    if response.content_length:
+        # TODO: Add file transfer functionality
+        try:
+            stream.sendall(StreamFrameGen(stream).from_data(response.msg))
+        except StreamException as e:
+            stream.send_close()
+            if request.config_settings["verbose"]:
+                print("StreamException type ({}) raised while sending response msg: {}".format(type(e), str(e)))
+    # close connection
+    stream.send_close()
 
 
 def check_if_setting_bounded(client_min, client_max, server_min, server_max, name):
@@ -365,7 +379,7 @@ def check_if_setting_bounded(client_min, client_max, server_min, server_max, nam
     return error, value
 
 
-class CepticServerNew(object):
+class CepticServer(object):
 
     def __init__(self, settings, certfile=None, keyfile=None, cafile=None, secure=True):
         self.settings = settings
@@ -397,25 +411,25 @@ class CepticServerNew(object):
         # add get command
         self.endpointManager.add_command(
             "get",
-            stream_server_command,
+            basic_server_command,
             create_command_settings(maxMsgLength=2048000000, maxBodyLength=2048000000)
         )
         # add post command
         self.endpointManager.add_command(
             "post",
-            stream_server_command,
+            basic_server_command,
             create_command_settings(maxMsgLength=2048000000, maxBodyLength=2048000000)
         )
         # add update command
         self.endpointManager.add_command(
             "update",
-            stream_server_command,
+            basic_server_command,
             create_command_settings(maxMsgLength=2048000000, maxBodyLength=2048000000)
         )
         # add delete command
         self.endpointManager.add_command(
             "delete",
-            stream_server_command,
+            basic_server_command,
             create_command_settings(maxMsgLength=2048000000, maxBodyLength=2048000000)
         )
 
@@ -451,6 +465,7 @@ class CepticServerNew(object):
         # create a socket object
         serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         # serversocket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        serversocket.settimeout(5)
         socketlist = []
         # get local machine name
         host = ""
@@ -523,7 +538,7 @@ class CepticServerNew(object):
         # get client stream timeout
         client_stream_timeout_str = s.recv_raw(4).strip()
         # see if values are acceptable
-        stream_settings = {}
+        stream_settings = {"verbose": self.settings["verbose"]}
         errors = []
         # convert received values to int
         client_frame_min_size = None
@@ -588,7 +603,7 @@ class CepticServerNew(object):
             s.send_raw(format(stream_settings["handler_max_count"], ">4"))
         # create StreamManager
         manager_uuid = uuid.uuid4()
-        manager = StreamManager.server(s, manager_uuid, stream_settings, CepticServerNew.handle_new_connection,
+        manager = StreamManager.server(s, manager_uuid, stream_settings, CepticServer.handle_new_connection,
                                        self.endpointManager, self.remove_manager)
         self.managerDict[manager_uuid] = manager
         manager.daemon = True
@@ -622,21 +637,28 @@ class CepticServerNew(object):
             request.config_settings = server_settings
         except KeyError as e:
             errors.append("endpoint of type {} not recognized: {}".format(request.command, request.endpoint))
-        # check that Content-Length header (if present) is of allowed length
-        if "Content-Length" in request.headers:
-            # if content length is longer than set max body length, invalid
-            if request.headers["Content-Length"] > request.settings["maxBodyLength"]:
-                errors.append("Content-Length exceeds server's allowed max body length of {}".format(
-                    request.settings["maxBodyLength"]))
+        # check that headers are valid/proper
+        errors.extend(CepticServer.check_new_connection_headers(request, server_settings))
         # if no errors, send positive response and continue
         if not len(errors):
-            stream.sendall(CepticResponse(200, "y").generate_frames(stream))
+            stream.sendall(CepticResponse(200).generate_frames(stream))
             command_func(stream, request, handler, variable_dict)
         # otherwise send info back
         else:
             # send frame with error and bad status
             stream.sendall(CepticResponse(400, errors=errors).generate_frames(stream))
             stream.send_close()
+
+    @staticmethod
+    def check_new_connection_headers(request, server_settings):
+        errors = []
+        # check that Content-Length header (if present) is of allowed length
+        if "Content-Length" in request.headers:
+            # if content length is longer than set max body length, invalid
+            if request.headers["Content-Length"] > request.settings["maxBodyLength"]:
+                errors.append("Content-Length exceeds server's allowed max body length of {}".format(
+                    request.settings["maxBodyLength"]))
+        return errors
 
     def route(self, endpoint, command, settings_override=None):
         """

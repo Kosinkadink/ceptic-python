@@ -8,7 +8,8 @@ from ceptic.common import CepticStatusCode, CepticResponse, CepticRequest, Cepti
 from ceptic.common import create_command_settings, decode_unicode_hook
 from ceptic.managers.endpointmanager import EndpointManager
 from ceptic.managers.certificatemanager import CertificateManager, CertificateManagerException, create_ssl_config
-from ceptic.managers.streammanager import StreamManager, StreamClosedException
+from ceptic.managers.streammanager import StreamManager, StreamFrameGen, StreamClosedException, StreamException, \
+    StreamTotalDataSizeException
 
 
 def create_client_settings(version="1.0.0",
@@ -52,12 +53,12 @@ def wrap_client_command(func):
 
 
 @wrap_client_command
-def basic_client_command(s, request):
+def old_basic_client_command(s, request):
     response = CepticResponse.get_with_socket(s, request.settings["maxMsgLength"])
     return response
 
 
-class CepticClient(object):
+class CepticClientOld(object):
 
     def __init__(self, settings, certfile=None, keyfile=None, cafile=None, check_hostname=True, secure=True):
         self.settings = settings
@@ -80,25 +81,25 @@ class CepticClient(object):
         # add get command
         self.endpointManager.add_command(
             "get",
-            basic_client_command,
+            old_basic_client_command,
             create_command_settings(maxMsgLength=2048000000, maxBodyLength=2048000000)
         )
         # add post command
         self.endpointManager.add_command(
             "post",
-            basic_client_command,
+            old_basic_client_command,
             create_command_settings(maxMsgLength=2048000000, maxBodyLength=2048000000)
         )
         # add update command
         self.endpointManager.add_command(
             "update",
-            basic_client_command,
+            old_basic_client_command,
             create_command_settings(maxMsgLength=2048000000, maxBodyLength=2048000000)
         )
         # add delete command
         self.endpointManager.add_command(
             "delete",
-            basic_client_command,
+            old_basic_client_command,
             create_command_settings(maxMsgLength=2048000000, maxBodyLength=2048000000)
         )
 
@@ -229,36 +230,40 @@ class CepticClient(object):
             return response
 
 
-def wrap_client_stream_command(func):
-    """
-    Decorator for server-side commands
-    """
-
-    def decorator_client_command(stream, request):
-        # if Content-Length is a header, expect server to respond with validity of body length
-        if "Content-Length" in request.headers:
-            valid_length = stream.recv(1)
-            # if server says length is valid, send body
-            if valid_length == "y":
-                stream.sendall(request.body)
-            # otherwise, receive response and close connection
-            else:
-                response = CepticResponse.get_with_socket(stream, 1024)
-                stream.close()
-                return response
-        # perform and return from command function
-        return func(stream, request)
-
-    return decorator_client_command
-
-
-@wrap_client_stream_command
-def stream_client_command(stream, request):
-    response = CepticResponse.get_with_socket(stream, request.settings["maxMsgLength"])
+def basic_client_command(stream, request):
+    # send body if content length header present
+    if request.content_length:
+        # TODO: Add file transfer functionality
+        try:
+            stream.sendall(StreamFrameGen(stream).from_data(request.body))
+        except StreamClosedException:
+            return CepticResponse(400, errors="stream closed while sending body")
+        except StreamException as e:
+            stream.send_close()
+            return CepticResponse(400, errors="StreamException: {}".format(str(e)))
+    # get response
+    try:
+        response_data = stream.get_full_data()
+    except StreamClosedException as e:
+        return CepticResponse(400, errors=str(e))
+    response = CepticResponse.from_data(response_data)
+    # if content length header present, receive response body
+    if response.content_length:
+        # TODO: Add file transfer functionality
+        try:
+            response.msg = stream.get_full_data(max_length=response.content_length)
+        except StreamTotalDataSizeException:
+            stream.send_close("body received is greater than reported content_length")
+            response.errors = "body received is greater than reported content_length; msg ignored"
+        except StreamException as e:
+            stream.send_close()
+            response.errors = "StreamException type ({}) thrown while receiving response msg: {}".format(type(e),
+                                                                                                         str(e))
+    # return response
     return response
 
 
-class CepticClientNew(object):
+class CepticClient(object):
 
     def __init__(self, settings, certfile=None, keyfile=None, cafile=None, check_hostname=True, secure=True):
         self.settings = settings
@@ -285,25 +290,25 @@ class CepticClientNew(object):
         # add get command
         self.endpointManager.add_command(
             "get",
-            stream_client_command,
+            basic_client_command,
             create_command_settings(maxMsgLength=2048000000, maxBodyLength=2048000000)
         )
         # add post command
         self.endpointManager.add_command(
             "post",
-            stream_client_command,
+            basic_client_command,
             create_command_settings(maxMsgLength=2048000000, maxBodyLength=2048000000)
         )
         # add update command
         self.endpointManager.add_command(
             "update",
-            stream_client_command,
+            basic_client_command,
             create_command_settings(maxMsgLength=2048000000, maxBodyLength=2048000000)
         )
         # add delete command
         self.endpointManager.add_command(
             "delete",
-            stream_client_command,
+            basic_client_command,
             create_command_settings(maxMsgLength=2048000000, maxBodyLength=2048000000)
         )
 

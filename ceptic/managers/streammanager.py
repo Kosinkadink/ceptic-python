@@ -95,12 +95,15 @@ class StreamManager(threading.Thread):
         return self.handler_count
 
     def run(self):
+        # set start time for keep alive timer
+        self.keep_alive_timer.start()
         # start receive thread
         self.isRunning = True
         self.receive_thread.start()
         while not self.shouldStop.is_set():
             # iterate through streams
-            for stream_id in self.streams:
+            streams = list(self.streams)
+            for stream_id in streams:
                 stream = self.streams[stream_id]
                 # check if stream has timed out
                 if stream.is_timed_out():
@@ -129,8 +132,6 @@ class StreamManager(threading.Thread):
         self.isRunning = False
 
     def receive_frames(self):
-        # set start time for keep alive timer
-        self.keep_alive_timer.start()
         while not self.shouldStop.is_set():
             ready_to_read, ready_to_write, in_error = select_ceptic([self.s], [], [], self.delay_time)
             # if ready to read, attempt to get frame from socket
@@ -156,8 +157,8 @@ class StreamManager(threading.Thread):
                     self.streams_to_remove.append(received_frame.stream_id)
                 # if all streams are to be closed (including socket), stop all and stop running
                 elif received_frame.is_close_all():
-                    self.close_all_handlers()
                     self.stop()
+                    break
                 # if SERVER and if frame of type header, create new stream stream and pass it to conn_handler_func
                 elif self.is_server and received_frame.is_header():
                     # if over limit (and limit exists), prepare to close handler after creation
@@ -184,7 +185,7 @@ class StreamManager(threading.Thread):
     def create_handler(self, stream_id=None):
         if stream_id is None:
             stream_id = str(uuid.uuid4())
-        self.streams[stream_id] = StreamHandler(stream_id=stream_id, settings=self.settings,
+        self.streams[stream_id] = StreamHandler(stream_id=stream_id, settings=self.settings,delay_time=self.delay_time,
                                                 use_processes=self.use_processes)
         self.handler_count += 1  # add to handler_count
         return stream_id
@@ -372,7 +373,7 @@ class StreamHandler(object):
 
     def get_full_header_data(self, timeout=None):
         # length should be no more than allowed header size and max 128 command, 128 endpoint, and 2 \r\n (4 bytes)
-        return self.get_full_data(timeout, self.max_header_size+128+128+4)
+        return self.get_full_data(timeout, self.max_header_size + 128 + 128 + 4)
 
     def get_full_frames(self, timeout=None, max_length=None):
         """
@@ -458,11 +459,18 @@ class StreamHandler(object):
 
 
 class StreamFrameGen(object):
-    __slots__ = ("stream_id", "frame_size")
+    __slots__ = ("stream",)
 
-    def __init__(self, stream_id, frame_size):
-        self.stream_id = stream_id
-        self.frame_size = frame_size
+    def __init__(self, stream):
+        self.stream = stream
+
+    @property
+    def frame_size(self):
+        return self.stream.frame_size
+
+    @property
+    def stream_id(self):
+        return self.stream.stream_id
 
     def from_file(self, file_object):
         """
@@ -471,7 +479,7 @@ class StreamFrameGen(object):
         :return: StreamFrame instance of type data
         """
         # get current chunk
-        curr_chunk = file_object.read(self.frame_size)
+        curr_chunk = file_object.read(self.stream.frame_size)
         if not curr_chunk:
             return
         while True:
@@ -497,7 +505,7 @@ class StreamFrameGen(object):
         i = 0
         while True:
             # get chunk of data
-            chunk = data[i:i+self.frame_size]
+            chunk = data[i:i + self.frame_size]
             # iterate chunk's starting index
             i += self.frame_size
             # if next chunk will be out of bounds, yield last frame

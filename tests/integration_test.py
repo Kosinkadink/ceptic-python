@@ -14,9 +14,9 @@ if version_info < (3, 0):  # if running python 2
 else:
     from queue import Queue
 
-from ceptic.server import CepticServer, CepticServerNew, create_server_settings
-from ceptic.client import CepticClient, CepticClientNew, create_client_settings
-from ceptic.common import CepticResponse
+from ceptic.server import CepticServer, CepticServerOld, create_server_settings
+from ceptic.client import CepticClient, CepticClientOld, create_client_settings
+from ceptic.common import CepticResponse, CepticException
 
 
 # FIXTURES:
@@ -216,9 +216,8 @@ def test_get_client_does_not_recognize_server_certs(server_certfile_keyfile_only
         app.start()
         # make request to server
         headers = dict()
-        response = client.connect_url("localhost:9000", "get", headers)
-        # check that status was 498 (error wrapping socket with ssl)
-        assert response.status == 498
+        with pytest.raises(CepticException):
+            response = client.connect_url("localhost:9000", "get", headers)
 
 
 def test_get_not_secure(server_not_secure, client_not_secure):
@@ -252,9 +251,8 @@ def test_get_server_not_found(client_all_files):
     client = client_all_files()
     # make request to server
     headers = dict()
-    response = client.connect_url("localhost:9000", "get", headers)
-    # check that status was 494 - server at url not found
-    assert response.status == 494
+    with pytest.raises(CepticException):
+        response = client.connect_url("localhost:9000", "get", headers)
 
 
 def test_get_multiple_requests_series(server_all_files, client_all_files):
@@ -318,12 +316,15 @@ def test_get_multiple_requests_parallel(server_all_files, client_all_files):
             thread.join()
         # check that each response was a success
         assert q.qsize() == thread_count
+        total_checked = 0
         while not q.empty():
             # check that status was OK and msg was "no body"
             response = q.get()
             assert response.status == 200
             assert response.msg == "no body"
             q.task_done()
+            total_checked += 1
+        print("Total Checked: {}".format(total_checked))
 
 
 def test_post(server_all_files, client_all_files):
@@ -439,6 +440,10 @@ if __name__ == "__main__":
     test_client = CepticClientNew(settings=client_settings, secure=False)
     server_settings = create_server_settings(port=9000, verbose=True)
     test_server = CepticServerNew(settings=server_settings, secure=False)
+    @test_server.route("/", "get")
+    def sample_endpoint(request):
+        #return 200, "HELLOTHERE", {"random_header": 12}
+        return CepticResponse(400, "file does not exist")
     # start server
     test_server.start()
     default_headers = dict()

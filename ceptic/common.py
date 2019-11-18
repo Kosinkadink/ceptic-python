@@ -64,7 +64,20 @@ class CepticRequest(object):
         self.body = body
         self.settings = settings
         self.config_settings = config_settings
+        self.stream = None
         # TODO: Add properties to easily access common headers (and return None if not present)
+
+    @property
+    def content_length(self):
+        if self.headers:
+            return self.headers.get("Content-Length")
+        return None
+
+    @property
+    def content_type(self):
+        if self.headers:
+            return self.headers.get("Content-Type")
+        return None
 
     def create_frame(self, stream_id):
         data = "{}\r\n{}\r\n{}".format(self.command, self.endpoint, json.dumps(self.headers))
@@ -72,7 +85,7 @@ class CepticRequest(object):
 
     def generate_frames(self, stream):
         data = "{}\r\n{}\r\n{}".format(self.command, self.endpoint, json.dumps(self.headers))
-        generator = StreamFrameGen(stream.stream_id, stream.frame_size).from_data(data)
+        generator = StreamFrameGen(stream).from_data(data)
         # make first frame type header
         try:
             frame = next(generator)
@@ -95,14 +108,42 @@ class CepticResponse(object):
         self.headers = headers
         self.msg = msg
         self.stream = stream
+        if not self.headers:
+            self.headers = {}
+        if self.msg:
+            self.content_length = len(msg)
         if errors:
-            if not self.headers:
-                self.headers = {}
-            self.headers["errors"] = errors
+            self.errors = errors
 
     @property
     def errors(self):
-        return self.headers.get["errors"]
+        if self.headers:
+            return self.headers.get("errors")
+        return None
+
+    @errors.setter
+    def errors(self, errors):
+        self.headers["errors"] = errors
+
+    @property
+    def content_length(self):
+        if self.headers:
+            return self.headers.get("Content-Length")
+        return None
+
+    @content_length.setter
+    def content_length(self, length):
+        self.headers["Content-Length"] = length
+
+    @property
+    def content_type(self):
+        if self.headers:
+            return self.headers.get("Content-Type")
+        return None
+
+    @content_type.setter
+    def content_type(self, value):
+        self.headers["Content-Type"] = value
 
     def is_success(self):
         return CepticStatusCode.is_success(self.status)
@@ -119,13 +160,9 @@ class CepticResponse(object):
     def get_dict(self):
         return {"status": self.status, "msg": self.msg, "headers": self.headers}
 
-    def create_frame(self, stream_id):
-        data = "{}\r\n{}".format(self.status, self.headers)
-        return StreamFrame.create_header(stream_id, data)
-
     def generate_frames(self, stream):
         data = "{}\r\n{}".format(self.status, json.dumps(self.headers))
-        generator = StreamFrameGen(stream.stream_id, stream.frame_size).from_data(data)
+        generator = StreamFrameGen(stream).from_data(data)
         for frame in generator:
             yield frame
 
