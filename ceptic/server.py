@@ -9,7 +9,7 @@ import uuid
 from sys import version_info
 from ceptic.network import SocketCeptic
 from ceptic.common import CepticRequest, CepticResponse, CepticStatusCode, CepticException
-from ceptic.common import create_command_settings, decode_unicode_hook
+from ceptic.common import create_command_settings, decode_unicode_hook, is_os_windows
 from ceptic.managers.endpointmanager import EndpointManager
 from ceptic.managers.certificatemanager import CertificateManager, CertificateManagerException, create_ssl_config
 from ceptic.managers.streammanager import StreamManager, StreamException, StreamClosedException, \
@@ -237,6 +237,8 @@ class CepticServer(object):
                 # establish a connection
                 if sock == serversocket:
                     s, addr = serversocket.accept()
+                    # enable socket blocking
+                    s.setblocking(True)
                     # s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                     newthread = threading.Thread(target=self.handle_new_socket, args=(s, addr))
                     newthread.daemon = True

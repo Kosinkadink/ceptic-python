@@ -237,6 +237,10 @@ def normalize_path(path):
     return path
 
 
+def is_os_windows():
+    return os.name == 'nt'
+
+
 def decode_unicode_hook(json_pairs):
     """
     Given json pairs, properly encode strings into utf-8 for general usage

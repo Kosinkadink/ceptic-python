@@ -284,9 +284,9 @@ def test_get_multiple_requests_series(server_all_files, client_all_files):
 def test_get_multiple_requests_parallel(server_all_files, client_all_files):
     _here = test_get_multiple_requests_parallel
     # init server and client
-    with server_all_files(settings=create_server_settings(verbose=False, request_queue_size=100)) as app:
+    with server_all_files(settings=create_server_settings(verbose=False, request_queue_size=100, stream_timeout=5)) as app:
         _here.server = app
-        client = client_all_files()
+        client = client_all_files(settings=create_client_settings(stream_timeout=5))
 
         # add test get command
         @app.route("/", "get")
@@ -300,9 +300,9 @@ def test_get_multiple_requests_parallel(server_all_files, client_all_files):
         # make request to server
         q = Queue()
 
-        def make_request_thread(qThread, clientThread, url, command, headers, body=None):
-            response = clientThread.connect_url(url, command, headers, body)
-            qThread.put(response)
+        def make_request_thread(q_thread, client_thread, url, command, headers, body=None):
+            response = client_thread.connect_url(url, command, headers, body)
+            q_thread.put(response)
 
         headers = dict()
         threads = []
@@ -320,6 +320,8 @@ def test_get_multiple_requests_parallel(server_all_files, client_all_files):
         while not q.empty():
             # check that status was OK and msg was "no body"
             response = q.get()
+            if response.errors:
+                print("Errors: {}".format(response.errors))
             assert response.status == 200
             assert response.msg == "no body"
             q.task_done()
@@ -437,20 +439,20 @@ def teardown_function(function):
 
 if __name__ == "__main__":
     client_settings = create_client_settings()
-    test_client = CepticClientNew(settings=client_settings, secure=False)
+    test_client = CepticClient(settings=client_settings, secure=False)
     server_settings = create_server_settings(port=9000, verbose=True)
-    test_server = CepticServerNew(settings=server_settings, secure=False)
+    test_server = CepticServer(settings=server_settings, secure=False)
     @test_server.route("/", "get")
     def sample_endpoint(request):
-        #return 200, "HELLOTHERE", {"random_header": 12}
+        # return 200, "HELLOTHERE", {"random_header": 12}
         return CepticResponse(400, "file does not exist")
     # start server
     test_server.start()
     default_headers = dict()
-    #try:
+    # try:
     print(test_client.connect_url("localhost:9000/", "get", headers=default_headers))
     # test_client.connect_ip("notavalidaddress9000/", None, "get", "/", headers=default_headers)
-    #except Exception as e:
+    # except Exception as e:
     #    print("{}: {}".format(str(type(e)),str(e)))
     sleep(7)
     test_server.stop()

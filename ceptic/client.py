@@ -5,7 +5,7 @@ import uuid
 from sys import version_info
 from ceptic.network import SocketCeptic
 from ceptic.common import CepticStatusCode, CepticResponse, CepticRequest, CepticCommands, CepticException
-from ceptic.common import create_command_settings, decode_unicode_hook
+from ceptic.common import create_command_settings, decode_unicode_hook, is_os_windows
 from ceptic.managers.endpointmanager import EndpointManager
 from ceptic.managers.certificatemanager import CertificateManager, CertificateManagerException, create_ssl_config
 from ceptic.managers.streammanager import StreamManager, StreamFrameGen, StreamClosedException, StreamException, \
@@ -170,6 +170,8 @@ class CepticClient(object):
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             # s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             s.settimeout(5)
+            # enable socket blocking
+            s.setblocking(True)
             try:
                 s.connect((host, port))
             except TypeError:
