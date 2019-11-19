@@ -53,11 +53,14 @@ def basic_client_command(stream, request):
             response.msg = stream.get_full_data(max_length=response.content_length)
         except StreamTotalDataSizeException:
             stream.send_close("body received is greater than reported content_length")
-            response.errors = "body received is greater than reported content_length; msg ignored"
+            response = CepticResponse(400, errors="body received is greater than reported content_length; msg ignored")
         except StreamException as e:
             stream.send_close()
-            response.errors = "StreamException type ({}) thrown while receiving response msg: {}".format(type(e),
-                                                                                                         str(e))
+            response = CepticResponse(400,
+                                      errors="StreamException type ({}) thrown while receiving response msg: {}".format(
+                                          type(e),
+                                          str(e))
+                                      )
     # return response
     return response
 
