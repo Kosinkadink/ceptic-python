@@ -73,6 +73,7 @@ class StreamManager(threading.Thread):
         self.conn_func_args = conn_func_args
         # control vars
         self.shouldStop = threading.Event()
+        self.stop_reason = ""
         self.send_event = threading.Event()
         self.keep_alive_timer = Timer()
         self.isRunning = False
@@ -127,10 +128,12 @@ class StreamManager(threading.Thread):
                         if frame_to_send.is_close():
                             self.streams_to_remove.append(stream_id)
                         elif frame_to_send.is_close_all():
-                            self.stop()
+                            self.stop(reason="sending close_all")
                             break
                         # update keep alive time; frame sent, so stream must be active
                         self.keep_alive_timer.update()
+        # if self.stop_reason:
+        #     print("STOP REASON: {}".format(self.stop_reason))
         # wait for receive and clean threads to close
         self.receive_thread.join()
         self.clean_thread.join()
@@ -164,9 +167,9 @@ class StreamManager(threading.Thread):
                 # get frame
                 try:
                     received_frame = StreamFrame.from_socket(sock, self.settings["frame_max_size"])
-                except (EOFError, StreamFrameSizeException):
+                except (EOFError, StreamFrameSizeException) as e:
                     # stop stream if socket unexpectedly closes or sender does not respect allotted max frame size
-                    self.stop()
+                    self.stop(reason="{},{}".format(type(e), str(e)))
                     continue
                 # update time for keep alive timer; just received frame, so connection must be alive
                 self.keep_alive_timer.update()
@@ -182,7 +185,7 @@ class StreamManager(threading.Thread):
                     self.streams_to_remove.append(received_frame.stream_id)
                 # if all streams are to be closed (including socket), stop all and stop running
                 elif received_frame.is_close_all():
-                    self.stop()
+                    self.stop("receiving close_all")
                     break
                 # if SERVER and if frame of type header, create new stream stream and pass it to conn_handler_func
                 elif self.is_server and received_frame.is_header():
@@ -236,10 +239,12 @@ class StreamManager(threading.Thread):
     def check_for_timeout(self):
         # if timeout past stream_timeout setting, stop manager
         if self.keep_alive_timer.get_time() > self.settings["stream_timeout"]:
-            print("manager {} timed out".format(self.name))
-            self.stop()
+            # print("manager {} timed out".format(self.name))
+            self.stop("manager timed out")
 
-    def stop(self):
+    def stop(self, reason=""):
+        if reason and not self.shouldStop.is_set():
+            self.stop_reason = reason
         self.shouldStop.set()
 
     def is_stopped(self):
@@ -302,7 +307,7 @@ class StreamHandler(object):
     def is_timed_out(self):
         # if timeout past stream_timeout setting, stop handler
         if self.keep_alive_timer.get_time() > self.settings["stream_timeout"]:
-            print("handler with stream_id {} has timed out".format(self.stream_id))
+            # print("handler with stream_id {} has timed out".format(self.stream_id))
             return True
         return False
 
@@ -397,20 +402,23 @@ class StreamHandler(object):
         """
         if timeout is None:
             timeout = self.settings["stream_timeout"]
-        full_data = ""
-        # done = False
+        # full_data = ""
+        frames = []
+        total_length = 0
         frame_generator = self.gen_next_frame(timeout)
         for frame in frame_generator:
             if not frame:
                 break
             # add data
-            full_data += frame.get_data()
-            if max_length and len(full_data) > max_length:
+            frames.append(frame.get_data())
+            total_length += len(frame.get_data())
+            # full_data += frame.get_data()
+            if max_length and total_length > max_length:  # len(full_data) > max_length:
                 raise StreamTotalDataSizeException("total data received has surpassed max_length of {}".format(
                     max_length))
             if frame.is_last():
                 break
-        return full_data
+        return "".join(frames)
 
     def get_full_header_data(self, timeout=None):
         # length should be no more than allowed header size and max 128 command, 128 endpoint, and 2 \r\n (4 bytes)
@@ -554,7 +562,7 @@ class StreamFrameGen(object):
             # if next chunk will be out of bounds, yield last frame
             if i >= len(data):
                 yield StreamFrame.create_data_last(self.stream_id, chunk)
-                break
+                return
             # otherwise yield continued frame
             yield StreamFrame.create_data_continued(self.stream_id, chunk)
 
@@ -702,10 +710,13 @@ class StreamFrame(object):
         # get info
         frame_info = s.recv_raw(1)
         # get data_length
+        raw_data_length = None
         try:
-            data_length = int(str(s.recv_raw(16)).strip())
+            raw_data_length = str(s.recv_raw(16))
+            data_length = int(raw_data_length.strip())
         except ValueError:
-            raise StreamFrameSizeException("received data_length could not be converted to int")
+            raise StreamFrameSizeException("received data_length could not be converted to int: {},{},{},{}".format(
+                stream_id, frame_type, frame_info, raw_data_length))
         # if data_length greater than max length, raise exception
         if data_length > max_data_length:
             raise StreamFrameSizeException("data_length ({}) greater than allowed max length of {}".format(

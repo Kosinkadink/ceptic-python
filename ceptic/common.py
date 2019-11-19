@@ -64,6 +64,10 @@ class CepticRequest(object):
         self.body = body
         self.settings = settings
         self.config_settings = config_settings
+        if not self.headers:
+            self.headers = {}
+        if self.body:
+            self.content_length = len(body)
         self.stream = None
         # TODO: Add properties to easily access common headers (and return None if not present)
 
@@ -73,11 +77,19 @@ class CepticRequest(object):
             return self.headers.get("Content-Length")
         return None
 
+    @content_length.setter
+    def content_length(self, length):
+        self.headers["Content-Length"] = length
+
     @property
     def content_type(self):
         if self.headers:
             return self.headers.get("Content-Type")
         return None
+
+    @content_type.setter
+    def content_type(self, value):
+        self.headers["Content-Type"] = value
 
     def create_frame(self, stream_id):
         data = "{}\r\n{}\r\n{}".format(self.command, self.endpoint, json.dumps(self.headers))
@@ -103,7 +115,7 @@ class CepticRequest(object):
 
 
 class CepticResponse(object):
-    def __init__(self, status, msg=None, headers=None, errors=None, stream=None):
+    def __init__(self, status, msg="", headers=None, errors=None, stream=None):
         self.status = int(status)
         self.headers = headers
         self.msg = msg

@@ -26,6 +26,8 @@ def create_client_settings(version="1.0.0",
                 "stream_min_timeout": int(stream_min_timeout),
                 "stream_timeout": int(stream_timeout),
                 "default_port": 9000}
+    if settings["frame_min_size"] > settings["frame_max_size"]:
+        settings["frame_min_size"] = settings["frame_max_size"]
     return settings
 
 
@@ -158,8 +160,6 @@ class CepticClient(object):
         """
         # verify args
         try:
-            # setup headers
-            headers = self.setup_headers(headers)
             # create request
             request = CepticRequest(command=command, endpoint=endpoint, headers=headers, body=body)
             self.verify_request(request)

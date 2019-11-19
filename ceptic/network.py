@@ -154,10 +154,12 @@ class SocketCepticPy3(SocketCeptic):
             return
         total_size = format(len(msg), ">16")
         # if it is already in bytes, do not encode it
-        try:
-            self.s.sendall(total_size.encode() + msg.encode())
-        except AttributeError:
-            self.s.sendall(total_size.encode() + msg)
+        sent = 0
+        while sent < len(msg):
+            try:
+                sent += self.s.send(total_size.encode() + msg[sent:].encode())
+            except AttributeError:
+                sent += self.s.send(total_size.encode() + msg[sent:])
 
     def sendall(self, msg):
         """
@@ -177,10 +179,12 @@ class SocketCepticPy3(SocketCeptic):
         if not msg:
             return
         # if it is already in bytes, do not encode it
-        try:
-            self.s.sendall(msg.encode())
-        except AttributeError:
-            self.s.sendall(msg)
+        sent = 0
+        while sent < len(msg):
+            try:
+                sent += self.s.send(msg.encode())
+            except AttributeError:
+                sent += self.s.send(msg)
 
     def recv(self, byte_amount):
         """

@@ -37,6 +37,8 @@ def create_server_settings(port=9000, version="1.0.0",
                 "max_parallel_count": int(max_parallel_count),
                 "request_queue_size": int(request_queue_size),
                 "verbose": bool(verbose)}
+    if settings["frame_min_size"] > settings["frame_max_size"]:
+        settings["frame_min_size"] = settings["frame_max_size"]
     return settings
 
 
@@ -57,8 +59,8 @@ def basic_server_command(stream, request, endpoint_func, endpoint_dict):
     response = None
     try:
         response = endpoint_func(request, **endpoint_dict)
-    except Exception:
-        stream.send_close()
+    except Exception as e:
+        stream.send_close("ENDPOINT_FUNC caused Exception {},{}".format(type(e), str(e)))
         return
     # if CepticResponse not returned, try to parse as tuple and create CepticResponse
     if not isinstance(response, CepticResponse):
@@ -88,7 +90,6 @@ def basic_server_command(stream, request, endpoint_func, endpoint_dict):
             error_response = CepticResponse(500,
                                             errors="endpoint returned invalid data type '{}'' on server".format(
                                                 type(response)))
-            print(request.config_settings)
             if request.config_settings["verbose"]:
                 print("Exception type ({}) raised while generating response: {}".format(type(e), str(e)))
             stream.sendall(error_response.generate_frames(stream))
@@ -98,13 +99,17 @@ def basic_server_command(stream, request, endpoint_func, endpoint_dict):
     if response.content_length:
         # TODO: Add file transfer functionality
         try:
-            stream.sendall(StreamFrameGen(stream).from_data(response.msg))
+            total_size = 0
+            for frame in StreamFrameGen(stream).from_data(response.msg):
+                total_size += len(frame.get_data())
+                stream.send(frame)
+            # stream.sendall(StreamFrameGen(stream).from_data(response.msg))
         except StreamException as e:
-            stream.send_close()
+            stream.send_close("SERVER STREAM EXCEPTION: {},{}".format(type(e),str(e)))
             if request.config_settings["verbose"]:
                 print("StreamException type ({}) raised while sending response msg: {}".format(type(e), str(e)))
     # close connection
-    stream.send_close()
+    stream.send_close("BASIC_SERVER_COMMAND COMPLETE")
 
 
 def check_if_setting_bounded(client_min, client_max, server_min, server_max, name):

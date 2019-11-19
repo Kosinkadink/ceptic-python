@@ -172,6 +172,32 @@ def test_get(server_all_files, client_all_files):
         assert response.msg == "no body"
 
 
+def test_get_big_body(server_all_files, client_all_files):
+    _here = test_get
+    # init server and client
+    with server_all_files(settings=create_server_settings(verbose=True)) as app:
+        _here.server = app
+        client = client_all_files()
+
+        # add test get command
+        @app.route("/", "get")
+        def get_command_test_route(request):
+            print("inside get_command_test_route")
+            if request.body is not None:
+                return 200, request.body
+            return 200, "no body"
+
+        # run server
+        app.start()
+        # make request to server
+        headers = dict()
+        body = "HELLOTHERE"
+        response = client.connect_url("localhost:9000", "get", headers, body=body)
+        # check that status was OK and msg was "no body"
+        assert response.status == 200
+        assert response.msg == body
+
+
 def test_get_only_server_related_files(server_certfile_keyfile_only, client_cafile_only):
     _here = test_get_only_server_related_files
     # init server and client
