@@ -115,7 +115,10 @@ class StreamManager(threading.Thread):
                 self.send_event.clear()
                 streams = list(self.streams)
                 for stream_id in streams:
-                    stream = self.streams[stream_id]
+                    stream = self.get_handler(stream_id)
+                    # if stream not found, must have been deleted; move on to next one
+                    if not stream:
+                        continue
                     # while a frame is ready to be sent, send it
                     while stream.is_ready_to_send() and not self.shouldStop.is_set():
                         frame_to_send = stream.get_ready_to_send()
@@ -140,7 +143,11 @@ class StreamManager(threading.Thread):
             streams = list(self.streams)
             # check if stream has timed out
             for stream_id in streams:
-                if self.streams[stream_id].is_timed_out():
+                stream = self.get_handler(stream_id)
+                # if stream not found, must have been deleted; move on to next one
+                if not stream:
+                    continue
+                if stream.is_timed_out():
                     self.streams_to_remove.append(stream_id)
                     continue
             # remove timed out streams
