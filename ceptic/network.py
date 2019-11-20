@@ -58,7 +58,8 @@ class SocketCepticPy2(SocketCeptic):
         if not msg:
             return
         total_size = format(len(msg), ">16")
-        self.s.sendall(total_size + msg)
+        self.send_raw(total_size)
+        self.send_raw(msg)
 
     def sendall(self, msg):
         """
@@ -77,7 +78,9 @@ class SocketCepticPy2(SocketCeptic):
         # if there is nothing to send, then do nothing
         if not msg:
             return
-        self.s.sendall(msg)
+        sent = 0
+        while sent < len(msg):
+            sent += self.s.send(msg[sent:])
 
     def recv(self, byte_amount):
         """
@@ -87,7 +90,7 @@ class SocketCepticPy2(SocketCeptic):
         :return: received bytes, readable as a string
         """
         try:
-            size_to_recv = self.s.recv(16)
+            size_to_recv = self.recv_raw(16)
             size_to_recv = int(size_to_recv.strip())
         except ValueError:
             raise EOFError("no data received (EOF)")
@@ -96,23 +99,14 @@ class SocketCepticPy2(SocketCeptic):
         amount = byte_amount
         if size_to_recv < amount:
             amount = size_to_recv
-        recvd = 0
-        text = ""
-        while recvd < amount:
-            part = self.s.recv(amount)
-            recvd += len(part)
-            text += part
-            if part == "":
-                break
-        return text
+        return self.recv_raw(amount)
 
     def recv_raw(self, byte_amount):
-        amount = byte_amount
-        recvd = 0
+        recv_amount = 0
         text = ""
-        while recvd < amount:
-            part = self.s.recv(amount)
-            recvd += len(part)
+        while recv_amount < byte_amount:
+            part = self.s.recv(byte_amount-recv_amount)
+            recv_amount += len(part)
             text += part
             if part == "":
                 break
@@ -153,13 +147,9 @@ class SocketCepticPy3(SocketCeptic):
         if not msg:
             return
         total_size = format(len(msg), ">16")
-        # if it is already in bytes, do not encode it
-        sent = 0
-        while sent < len(msg):
-            try:
-                sent += self.s.send(total_size.encode() + msg[sent:].encode())
-            except AttributeError:
-                sent += self.s.send(total_size.encode() + msg[sent:])
+        # send length and msg
+        self.send_raw(total_size)
+        self.send_raw(msg)
 
     def sendall(self, msg):
         """
@@ -182,9 +172,9 @@ class SocketCepticPy3(SocketCeptic):
         sent = 0
         while sent < len(msg):
             try:
-                sent += self.s.send(msg.encode())
+                sent += self.s.send(msg[sent:].encode())
             except AttributeError:
-                sent += self.s.send(msg)
+                sent += self.s.send(msg[sent:])
 
     def recv(self, byte_amount):
         """
@@ -194,24 +184,16 @@ class SocketCepticPy3(SocketCeptic):
         :return: received bytes, readable as a string
         """
         try:
-            size_to_recv = self.s.recv(16)
+            size_to_recv = self.recv_raw(16)
             size_to_recv = int(size_to_recv.strip())
         except ValueError:
             raise EOFError("no data received (EOF)")
         except OSError:
             raise EOFError("no data received (EOF)")
         amount = byte_amount
-        if size_to_recv < amount:
+        if size_to_recv < byte_amount:
             amount = size_to_recv
-        recvd = 0
-        text = bytes()
-        while recvd < amount:
-            part = self.s.recv(amount)
-            recvd += len(part)
-            text += part
-            if part == "":
-                break
-        return text.decode()
+        return self.recv_raw(amount)
 
     def recv_raw(self, byte_amount):
         """
@@ -220,12 +202,11 @@ class SocketCepticPy3(SocketCeptic):
         :param byte_amount: integer
         :return: received bytes, readable as a string
         """
-        amount = byte_amount
-        recvd = 0
+        recv_amount = 0
         text = bytes()
-        while recvd < amount:
-            part = self.s.recv(amount)
-            recvd += len(part)
+        while recv_amount < byte_amount:
+            part = self.s.recv(byte_amount-recv_amount)
+            recv_amount += len(part)
             text += part
             if part == "":
                 break

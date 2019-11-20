@@ -132,8 +132,6 @@ class StreamManager(threading.Thread):
                             break
                         # update keep alive time; frame sent, so stream must be active
                         self.keep_alive_timer.update()
-        # if self.stop_reason:
-        #     print("STOP REASON: {}".format(self.stop_reason))
         # wait for receive and clean threads to close
         self.receive_thread.join()
         self.clean_thread.join()
