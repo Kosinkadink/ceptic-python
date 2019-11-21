@@ -137,16 +137,6 @@ class CepticClient(object):
                 len(json_headers) - self.settings["headers_max_size"],
                 self.settings["headers_max_size"]))
 
-    @staticmethod
-    def setup_headers(headers, body=None):
-        # if headers are None, initialize headers as dict
-        if not headers:
-            headers = {}
-        # create Content-Length header if body exists and is not already there
-        if body and not headers.get("Content-Length", None):
-            headers["Content-Length"] = len(body)
-        return headers
-
     def connect_ip(self, host, port, command, endpoint, headers, body=None, force_new_stream=False):  # connect to ip
         """
         Connect to ceptic server at given ip

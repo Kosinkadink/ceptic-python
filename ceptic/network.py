@@ -25,10 +25,10 @@ class SocketCeptic(object):
     def send_raw(self, msg):
         pass
 
-    def recv(self, byte_amount):
+    def recv(self, byte_amount, decode=True):
         pass
 
-    def recv_raw(self, byte_amount):
+    def recv_raw(self, byte_amount, decode=True):
         pass
 
     def get_socket(self):
@@ -82,11 +82,12 @@ class SocketCepticPy2(SocketCeptic):
         while sent < len(msg):
             sent += self.s.send(msg[sent:])
 
-    def recv(self, byte_amount):
+    def recv(self, byte_amount, decode=True):
         """
         Receive message, first the 16-byte length prefix, then the message of corresponding length. No more than the
         specified amount of bytes will be received, but based on the received length less bytes could be received
         :param byte_amount: integer
+        :param decode: does nothing, included for Python3 cross-compatibility
         :return: received bytes, readable as a string
         """
         try:
@@ -99,9 +100,9 @@ class SocketCepticPy2(SocketCeptic):
         amount = byte_amount
         if size_to_recv < amount:
             amount = size_to_recv
-        return self.recv_raw(amount)
+        return self.recv_raw(amount, decode)
 
-    def recv_raw(self, byte_amount):
+    def recv_raw(self, byte_amount, decode=True):
         recv_amount = 0
         text = ""
         while recv_amount < byte_amount:
@@ -176,11 +177,12 @@ class SocketCepticPy3(SocketCeptic):
             except AttributeError:
                 sent += self.s.send(msg[sent:])
 
-    def recv(self, byte_amount):
+    def recv(self, byte_amount, decode=None):
         """
         Receive message, first the 16-byte length prefix, then the message of corresponding length. No more than the
         specified amount of bytes will be received, but based on the received length less bytes could be received
         :param byte_amount: integer
+        :param decode: boolean for whether return will be str (True) or bytes (False)
         :return: received bytes, readable as a string
         """
         try:
@@ -195,11 +197,12 @@ class SocketCepticPy3(SocketCeptic):
             amount = size_to_recv
         return self.recv_raw(amount)
 
-    def recv_raw(self, byte_amount):
+    def recv_raw(self, byte_amount, decode=True):
         """
         Receive message of corresponding length. No more than the
         specified amount of bytes will be received
         :param byte_amount: integer
+        :param decode: boolean for whether return will be str (True) or bytes (False)
         :return: received bytes, readable as a string
         """
         recv_amount = 0
@@ -210,7 +213,9 @@ class SocketCepticPy3(SocketCeptic):
             text += part
             if not part:
                 break
-        return text.decode()
+        if decode:
+            return text.decode()
+        return text
 
     def get_socket(self):
         """

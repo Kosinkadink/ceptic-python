@@ -428,8 +428,11 @@ class StreamHandler(object):
             if frame.is_last():
                 break
         # decompress data
-        compressed_full_data = "".join(frames)
-        return self.compressor.decompress(compressed_full_data)
+        if version_info < (3, 0):  # Python2 code
+            compressed_full_data = "".join(frames)
+        else:  # Python3 code
+            compressed_full_data = bytes().join(frames)
+        return self.compressor.decompress(compressed_full_data).decode()
 
     def get_full_header_data(self, timeout=None):
         # length should be no more than allowed header size and max 128 command, 128 endpoint, and 2 \r\n (4 bytes)
@@ -738,7 +741,7 @@ class StreamFrame(object):
         # if data_length not zero, get data
         data = ""
         if data_length > 0:
-            data = s.recv_raw(data_length)
+            data = s.recv_raw(data_length, decode=False)
         return cls(stream_id, frame_type, frame_info, data)
 
     @classmethod

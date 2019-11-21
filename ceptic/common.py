@@ -56,14 +56,13 @@ class CepticStatusCode(object):
 
 class CepticRequest(object):
     def __init__(self, command=None, endpoint=None, headers=None, body=None, settings=None, config_settings=None,
-                 header_compress=None, url=None):
+                 url=None):
         self.command = command
         self.endpoint = endpoint
         self.headers = headers
         self.body = body
         self.settings = settings
         self.config_settings = config_settings
-        self.header_compress = header_compress
         self.url = url
         if not self.headers:
             self.headers = {}
@@ -103,9 +102,8 @@ class CepticRequest(object):
         self.headers["Compress"] = value
 
     def generate_frames(self, stream):
-        compressed_headers = CompressGetter.get(self.header_compress).compress(json.dumps(self.headers))
-        data = "{}\r\n{}\r\n{}\r\n{}".format(self.command, self.endpoint, self.header_compress,
-                                             compressed_headers)
+        json_headers = json.dumps(self.headers)
+        data = "{}\r\n{}\r\n{}".format(self.command, self.endpoint, json_headers)
         generator = StreamFrameGen(stream).from_data(data)
         # make first frame type header
         try:
@@ -119,10 +117,9 @@ class CepticRequest(object):
 
     @classmethod
     def from_data(cls, data):
-        command, endpoint, header_compress, json_headers = data.split("\r\n")
-        decompressed_headers = CompressGetter.get(header_compress).decompress(
-            json.loads(json_headers, object_pairs_hook=decode_unicode_hook))
-        return cls(command, endpoint, decompressed_headers, header_compress=header_compress)
+        command, endpoint, json_headers = data.split("\r\n")
+        headers = json.loads(json_headers, object_pairs_hook=decode_unicode_hook)
+        return cls(command, endpoint, headers)
 
 
 class CepticResponse(object):
