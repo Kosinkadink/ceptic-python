@@ -1,12 +1,5 @@
 import pytest
 from sys import version_info
-
-if version_info < (3, 0):  # if running python 2
-    from testingfixtures import add_surrounding_dir_to_path
-
-    # add surrounding dir to path to enable importing
-    add_surrounding_dir_to_path()
-
 from ceptic.managers.endpointmanager import EndpointManager, EndpointClientManager, EndpointServerManager
 from ceptic.managers.endpointmanager import EndpointManagerException
 from ceptic.common import create_command_settings
@@ -14,9 +7,6 @@ from ceptic.common import create_command_settings
 
 # HELPERS:
 def helper_add_test_command_to_EndpointServerManager(manager, command_name):
-    def command_func():
-        pass
-
     manager.add_command(command="get",
                         command_func=command_name,
                         settings=create_command_settings(

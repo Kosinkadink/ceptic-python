@@ -3,8 +3,6 @@ import sys
 import json
 from sys import version_info
 from time import time
-
-
 # StreamManager import located on bottom of file to allow circular import
 
 
@@ -57,13 +55,16 @@ class CepticStatusCode(object):
 
 
 class CepticRequest(object):
-    def __init__(self, command=None, endpoint=None, headers=None, body=None, settings=None, config_settings=None):
+    def __init__(self, command=None, endpoint=None, headers=None, body=None, settings=None, config_settings=None,
+                 header_compress=None, url=None):
         self.command = command
         self.endpoint = endpoint
         self.headers = headers
         self.body = body
         self.settings = settings
         self.config_settings = config_settings
+        self.header_compress = header_compress
+        self.url = url
         if not self.headers:
             self.headers = {}
         if self.body:
@@ -91,12 +92,20 @@ class CepticRequest(object):
     def content_type(self, value):
         self.headers["Content-Type"] = value
 
-    def create_frame(self, stream_id):
-        data = "{}\r\n{}\r\n{}".format(self.command, self.endpoint, json.dumps(self.headers))
-        return StreamFrame.create_header(stream_id, data)
+    @property
+    def compress(self):
+        if self.headers:
+            return self.headers.get("Compress")
+        return None
+
+    @compress.setter
+    def compress(self, value):
+        self.headers["Compress"] = value
 
     def generate_frames(self, stream):
-        data = "{}\r\n{}\r\n{}".format(self.command, self.endpoint, json.dumps(self.headers))
+        compressed_headers = CompressGetter.get(self.header_compress).compress(json.dumps(self.headers))
+        data = "{}\r\n{}\r\n{}\r\n{}".format(self.command, self.endpoint, self.header_compress,
+                                             compressed_headers)
         generator = StreamFrameGen(stream).from_data(data)
         # make first frame type header
         try:
@@ -110,8 +119,10 @@ class CepticRequest(object):
 
     @classmethod
     def from_data(cls, data):
-        command, endpoint, json_headers = data.split("\r\n")
-        return cls(command, endpoint, json.loads(json_headers, object_pairs_hook=decode_unicode_hook))
+        command, endpoint, header_compress, json_headers = data.split("\r\n")
+        decompressed_headers = CompressGetter.get(header_compress).decompress(
+            json.loads(json_headers, object_pairs_hook=decode_unicode_hook))
+        return cls(command, endpoint, decompressed_headers, header_compress=header_compress)
 
 
 class CepticResponse(object):
@@ -272,3 +283,4 @@ def decode_unicode_hook(json_pairs):
 
 
 from ceptic.managers.streammanager import StreamFrame, StreamFrameGen
+from ceptic.compress import CompressGetter

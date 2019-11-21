@@ -108,7 +108,7 @@ class SocketCepticPy2(SocketCeptic):
             part = self.s.recv(byte_amount-recv_amount)
             recv_amount += len(part)
             text += part
-            if part == "":
+            if not part:
                 break
         return text
 
@@ -208,7 +208,7 @@ class SocketCepticPy3(SocketCeptic):
             part = self.s.recv(byte_amount-recv_amount)
             recv_amount += len(part)
             text += part
-            if part == "":
+            if not part:
                 break
         return text.decode()
 

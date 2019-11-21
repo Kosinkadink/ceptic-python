@@ -6,6 +6,7 @@ from sys import version_info
 from collections import deque
 from ceptic.common import CepticException, Timer
 from ceptic.network import select_ceptic
+from ceptic.compress import CompressGetter
 
 
 class StreamManagerException(CepticException):
@@ -280,6 +281,9 @@ class StreamHandler(object):
         # keep_alive timer
         self.keep_alive_timer = Timer()
         self.keep_alive_timer.start()
+        # compression
+        self._compressor = None
+        self.set_compress(None)
 
     @property
     def frame_size(self):
@@ -292,6 +296,13 @@ class StreamHandler(object):
     @property
     def timeout(self):
         return self.settings["stream_timeout"]
+
+    @property
+    def compressor(self):
+        return self._compressor
+
+    def set_compress(self, name):
+        self._compressor = CompressGetter.get(name)
 
     def stop(self):
         self.read_or_stop_event.set()
@@ -416,7 +427,9 @@ class StreamHandler(object):
                     max_length))
             if frame.is_last():
                 break
-        return "".join(frames)
+        # decompress data
+        compressed_full_data = "".join(frames)
+        return self.compressor.decompress(compressed_full_data)
 
     def get_full_header_data(self, timeout=None):
         # length should be no more than allowed header size and max 128 command, 128 endpoint, and 2 \r\n (4 bytes)
@@ -551,14 +564,15 @@ class StreamFrameGen(object):
         """
         if not data:
             return
+        compressed_data = self.stream.compressor.compress(data)
         i = 0
         while True:
             # get chunk of data
-            chunk = data[i:i + self.frame_size]
+            chunk = compressed_data[i:i + self.frame_size]
             # iterate chunk's starting index
             i += self.frame_size
             # if next chunk will be out of bounds, yield last frame
-            if i >= len(data):
+            if i >= len(compressed_data):
                 yield StreamFrame.create_data_last(self.stream_id, chunk)
                 return
             # otherwise yield continued frame

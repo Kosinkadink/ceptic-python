@@ -7,15 +7,11 @@ from sys import version_info
 
 if version_info < (3, 0):  # if running python 2
     from Queue import Queue
-    from testingfixtures import add_surrounding_dir_to_path
-
-    # add surrounding dir to path to enable importing
-    add_surrounding_dir_to_path()
 else:
     from queue import Queue
 
-from ceptic.server import CepticServer, CepticServerOld, create_server_settings
-from ceptic.client import CepticClient, CepticClientOld, create_client_settings
+from ceptic.server import CepticServer, create_server_settings
+from ceptic.client import CepticClient, create_client_settings
 from ceptic.common import CepticResponse, CepticException
 
 
@@ -23,7 +19,7 @@ from ceptic.common import CepticResponse, CepticException
 @pytest.fixture(scope="module")
 def locations():
     # location of tests (current dir)
-    class _real_object(object):
+    class _RealObject(object):
         def __init__(self):
             self.test_dir = os.path.join(os.path.realpath(
                 os.path.join(os.getcwd(), os.path.dirname(__file__))))
@@ -36,7 +32,7 @@ def locations():
             self.c_keyfile = os.path.join(self.client_certs, "key_client.pem")
             self.c_cafile = os.path.join(self.client_certs, "cert_server.pem")
 
-    return _real_object()
+    return _RealObject()
 
 
 @pytest.fixture(scope="function")
@@ -220,6 +216,33 @@ def test_get_echo_body_multiple_frames(server_all_files, client_all_files):
         # make request to server
         headers = dict()
         body = "HELLOTHERE1HELLOTHERE2HELLOTHERE3"
+        response = client.connect_url("localhost:9000", "get", headers, body=body)
+        # check that status was OK and msg was "no body"
+        assert response.status == 200
+        assert response.msg == body
+
+
+def oldtest_get_echo_body_compression(server_all_files, client_all_files):
+    _here = test_get
+    # init server and client
+    with server_all_files(settings=create_server_settings(verbose=True)) as app:
+        _here.server = app
+        client = client_all_files()
+
+        # add test get command
+        @app.route("/", "get")
+        def get_command_test_route(request):
+            print("inside get_command_test_route")
+            if request.body is not None:
+                return 200, request.body
+            return 200, "no body"
+
+        # run server
+        app.start()
+        # make request to server
+        headers = {"Compress": "None"}
+        # include a body smaller than frame_max_size
+        body = "HELLOTHERE"
         response = client.connect_url("localhost:9000", "get", headers, body=body)
         # check that status was OK and msg was "no body"
         assert response.status == 200
@@ -487,29 +510,4 @@ def teardown_function(function):
             function.server.stop()
             while not function.server.is_stopped():
                 sleep(0.05)
-
-
 # done setup/teardown for each function
-
-
-if __name__ == "__main__":
-    client_settings = create_client_settings()
-    test_client = CepticClient(settings=client_settings, secure=False)
-    server_settings = create_server_settings(port=9000, verbose=True)
-    test_server = CepticServer(settings=server_settings, secure=False)
-    @test_server.route("/", "get")
-    def sample_endpoint(request):
-        # return 200, "HELLOTHERE", {"random_header": 12}
-        return CepticResponse(400, "file does not exist")
-    # start server
-    test_server.start()
-    default_headers = dict()
-    # try:
-    print(test_client.connect_url("localhost:9000/", "get", headers=default_headers))
-    # test_client.connect_ip("notavalidaddress9000/", None, "get", "/", headers=default_headers)
-    # except Exception as e:
-    #    print("{}: {}".format(str(type(e)),str(e)))
-    sleep(7)
-    test_server.stop()
-    while not test_server.is_stopped():
-        sleep(0.1)
