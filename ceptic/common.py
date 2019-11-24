@@ -126,19 +126,19 @@ class CepticRequest(object):
 
 
 class CepticResponse(object):
-    def __init__(self, status, msg="", headers=None, errors=None, stream=None):
+    def __init__(self, status, body="", headers=None, errors=None, stream=None):
         self.status = int(status)
         self.headers = headers
-        self.msg = msg
+        self.body = body
         self.stream = stream
         if not self.headers:
             self.headers = {}
-        if self.msg:
-            if self.msg:
-                if len(self.msg) < 500:
+        if self.body:
+            if self.body:
+                if len(self.body) < 500:
                     self.content_length = 500
                 else:
-                    self.content_length = len(msg) * 2
+                    self.content_length = len(body) * 2
         if errors:
             self.errors = errors
 
@@ -185,7 +185,7 @@ class CepticResponse(object):
         return CepticStatusCode.is_server_error(self.status)
 
     def get_dict(self):
-        return {"status": self.status, "msg": self.msg, "headers": self.headers}
+        return {"status": self.status, "body": self.body, "headers": self.headers}
 
     def generate_frames(self, stream):
         data = "{}\r\n{}".format(self.status, json.dumps(self.headers))
@@ -203,18 +203,18 @@ class CepticResponse(object):
 
     @classmethod
     def from_frame(cls, frame):
-        status, json_headers, msg = frame.get_data().split("\r\n")
-        return cls(status, msg, headers=json.loads(json_headers, object_pairs_hook=decode_unicode_hook))
+        status, json_headers, body = frame.get_data().split("\r\n")
+        return cls(status, body, headers=json.loads(json_headers, object_pairs_hook=decode_unicode_hook))
 
     @staticmethod
     def get_with_socket(s, max_msg_length):
         status = int(s.recv(3))
-        msg = s.recv(max_msg_length)
-        return CepticResponse(status, msg)
+        body = s.recv(max_msg_length)
+        return CepticResponse(status, body)
 
     def send_with_socket(self, s):
         s.sendall('%3d' % self.status)
-        s.sendall(self.msg)
+        s.sendall(self.body)
 
     def __repr__(self):
         return str(self.get_dict())

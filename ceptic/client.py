@@ -55,14 +55,14 @@ def basic_client_command(stream, request):
     if response.content_length:
         # TODO: Add file transfer functionality
         try:
-            response.msg = stream.get_full_data(max_length=response.content_length)
+            response.body = stream.get_full_data(max_length=response.content_length)
         except StreamTotalDataSizeException:
             stream.send_close("body received is greater than reported content_length")
-            response = CepticResponse(400, errors="body received is greater than reported content_length; msg ignored")
+            response = CepticResponse(400, errors="body received is greater than reported content_length; body ignored")
         except StreamException as e:
             stream.send_close()
             response = CepticResponse(400,
-                                      errors="StreamException type ({}) thrown while receiving response msg: {}".format(
+                                      errors="StreamException type ({}) thrown while receiving response body: {}".format(
                                           type(e),
                                           str(e))
                                       )
@@ -144,7 +144,7 @@ class CepticClient(object):
             if not valid:
                 raise ValueError("encoding header not valid; {}".format(error))
 
-    def connect_ip(self, host, port, command, endpoint, headers, body=None, force_new_stream=False):  # connect to ip
+    def connect_ip(self, host, port, command, endpoint, headers, body=None, force_new_stream=False, request=None):
         """
         Connect to ceptic server at given ip
         :param host: string of ip address (ipv4)
@@ -154,12 +154,14 @@ class CepticClient(object):
         :param headers: dict containing headers
         :param body: optional parameter containing body of request
         :param force_new_stream: optional boolean (default False) to guarantee new StreamManager creation
+        :param request: optional request object to substitute for other parameters
         :return: CepticResponse instance
         """
         # verify args
         try:
-            # create request
-            request = CepticRequest(command=command, endpoint=endpoint, headers=headers, body=body)
+            # create request if one not passed in
+            if not request:
+                request = CepticRequest(command=command, endpoint=endpoint, headers=headers, body=body)
             self.verify_request(request)
         except ValueError as e:
             raise CepticException(e)
@@ -208,6 +210,15 @@ class CepticClient(object):
             raise e
         except IndexError as e:
             raise e
+
+    def connect_request(self, request, force_new_stream=False):
+        """
+        Connect to ceptic server using filled-out request
+        :param request: CepticRequest object
+        :param force_new_stream: optional boolean (default False) to guarantee new StreamManager creation
+        :return: CepticResponse instance
+        """
+        return self.connect_ip(None, None, None, None, None, request=request, force_new_stream=force_new_stream)
 
     def get_details_from_url(self, url):
         endpoint = ""

@@ -163,9 +163,9 @@ def test_get(server_all_files, client_all_files):
         # make request to server
         headers = dict()
         response = client.connect_url("localhost:9000", "get", headers)
-        # check that status was OK and msg was "no body"
+        # check that status was OK and body was "no body"
         assert response.status == 200
-        assert response.msg == "no body"
+        assert response.body == "no body"
 
 
 def test_get_echo_body(server_all_files, client_all_files):
@@ -190,9 +190,9 @@ def test_get_echo_body(server_all_files, client_all_files):
         # include a body smaller than frame_max_size
         body = "HELLOTHERE"
         response = client.connect_url("localhost:9000", "get", headers, body=body)
-        # check that status was OK and msg was "no body"
+        # check that status was OK and body was "no body"
         assert response.status == 200
-        assert response.msg == body
+        assert response.body == body
 
 
 def test_get_echo_body_multiple_frames(server_all_files, client_all_files):
@@ -217,9 +217,9 @@ def test_get_echo_body_multiple_frames(server_all_files, client_all_files):
         headers = dict()
         body = "HELLOTHERE"*100
         response = client.connect_url("localhost:9000", "get", headers, body=body)
-        # check that status was OK and msg was "no body"
+        # check that status was OK and body was "no body"
         assert response.status == 200
-        assert response.msg == body
+        assert response.body == body
 
 
 def test_get_echo_body_encoding(server_all_files, client_all_files):
@@ -247,11 +247,11 @@ def test_get_echo_body_encoding(server_all_files, client_all_files):
             # include a body smaller than frame_max_size
             body = "HELLOTHERE"
             response = client.connect_url("localhost:9000", "get", headers, body=body)
-            # check that status was OK and msg was "no body"
+            # check that status was OK and body was "no body"
             if response.status != 200:
                 pytest.fail("{} != 200 for encoding: {}".format(response.status, encoding))
-            if response.msg != body:
-                pytest.fail("{} != {} for encoding: {}".format(response.msg, body, encoding))
+            if response.body != body:
+                pytest.fail("{} != {} for encoding: {}".format(response.body, body, encoding))
 
 
 def test_get_echo_body_encoding_invalid(server_all_files, client_all_files):
@@ -302,9 +302,9 @@ def test_get_only_server_related_files(server_certfile_keyfile_only, client_cafi
         # make request to server
         headers = dict()
         response = client.connect_url("localhost:9000", "get", headers)
-        # check that status was OK and msg was "no body"
+        # check that status was OK and body was "no body"
         assert response.status == 200
-        assert response.msg == "no body"
+        assert response.body == "no body"
 
 
 def test_get_client_does_not_recognize_server_certs(server_certfile_keyfile_only, client_no_files):
@@ -350,9 +350,9 @@ def test_get_not_secure(server_not_secure, client_not_secure):
         # make request to server
         headers = dict()
         response = client.connect_url("localhost:9000", "get", headers)
-        # check that status was OK and msg was "no body"
+        # check that status was OK and body was "no body"
         assert response.status == 200
-        assert response.msg == "no body"
+        assert response.body == "no body"
 
 
 def test_get_server_not_found(client_all_files):
@@ -386,9 +386,9 @@ def test_get_multiple_requests_series(server_all_files, client_all_files):
         headers = dict()
         for i in range(0, 10):  # send requests in series
             response = client.connect_url("localhost:9000/", "get", headers)
-            # check that status was OK and msg was "no body"
+            # check that status was OK and body was "no body"
             assert response.status == 200
-            assert response.msg == "no body"
+            assert response.body == "no body"
 
 
 def test_get_multiple_requests_parallel(server_all_files, client_all_files):
@@ -429,12 +429,12 @@ def test_get_multiple_requests_parallel(server_all_files, client_all_files):
         assert q.qsize() == thread_count
         total_checked = 0
         while not q.empty():
-            # check that status was OK and msg was "no body"
+            # check that status was OK and body was "no body"
             response = q.get()
             if response.errors:
                 print("Errors: {}".format(response.errors))
             assert response.status == 200
-            assert response.msg == "no body"
+            assert response.body == "no body"
             q.task_done()
             total_checked += 1
         print("Total Checked: {}".format(total_checked))
@@ -461,9 +461,9 @@ def test_post(server_all_files, client_all_files):
         body = "HELLOTHERE"
         headers = {"Content-Length": len(body)}
         response = client.connect_url("localhost:9000/", "post", headers, body)
-        # check that status was OK and msg was equal to body 
+        # check that status was OK and body was equal to body
         assert response.status == 200
-        assert response.msg == body
+        assert response.body == body
 
 
 def test_update(server_all_files, client_all_files):
@@ -487,9 +487,9 @@ def test_update(server_all_files, client_all_files):
         body = "HELLOTHERE"
         headers = {"Content-Length": len(body)}
         response = client.connect_url("localhost:9000/", "update", headers, body)
-        # check that status was OK and msg was equal to body 
+        # check that status was OK and body was equal to body
         assert response.status == 200
-        assert response.msg == body
+        assert response.body == body
 
 
 def test_delete(server_all_files, client_all_files):
@@ -513,9 +513,9 @@ def test_delete(server_all_files, client_all_files):
         body = "HELLOTHERE"
         headers = {"Content-Length": len(body)}
         response = client.connect_url("localhost:9000/", "delete", headers, body)
-        # check that status was OK and msg was equal to body 
+        # check that status was OK and body was equal to body
         assert response.status == 200
-        assert response.msg == body
+        assert response.body == body
 
 
 def test_stream():

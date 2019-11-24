@@ -74,7 +74,7 @@ def basic_server_command(stream, request, endpoint_func, endpoint_dict):
             else:
                 response_tuple = (response,)
             status = int(response_tuple[0])
-            msg = None
+            body = None
             headers = None
             errors = None
             # if error status, assume error message included
@@ -82,13 +82,13 @@ def basic_server_command(stream, request, endpoint_func, endpoint_dict):
                 if CepticStatusCode.is_error(status):
                     errors = str(response_tuple[1])
                 else:
-                    msg = str(response_tuple[1])
+                    body = str(response_tuple[1])
             # assume third item is headers
             if len(response_tuple) > 2:
                 if not isinstance(response_tuple[2], dict):
                     raise ValueError("3rd argument must be type dict")
                 headers = response_tuple[2]
-            response = CepticResponse(status, msg, headers, errors)
+            response = CepticResponse(status, body, headers, errors)
         except Exception as e:
             error_response = CepticResponse(500,
                                             errors="endpoint returned invalid data type '{}'' on server".format(
@@ -102,15 +102,11 @@ def basic_server_command(stream, request, endpoint_func, endpoint_dict):
     if response.content_length:
         # TODO: Add file transfer functionality
         try:
-            total_size = 0
-            for frame in StreamFrameGen(stream).from_data(response.msg):
-                total_size += len(frame.get_data())
-                stream.send(frame)
-            # stream.sendall(StreamFrameGen(stream).from_data(response.msg))
+            stream.sendall(StreamFrameGen(stream).from_data(response.body))
         except StreamException as e:
             stream.send_close("SERVER STREAM EXCEPTION: {},{}".format(type(e),str(e)))
             if request.config_settings["verbose"]:
-                print("StreamException type ({}) raised while sending response msg: {}".format(type(e), str(e)))
+                print("StreamException type ({}) raised while sending response body: {}".format(type(e), str(e)))
     # close connection
     stream.send_close("BASIC_SERVER_COMMAND COMPLETE")
 

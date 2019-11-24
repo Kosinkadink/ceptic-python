@@ -148,7 +148,7 @@ class SocketCepticPy3(SocketCeptic):
         if not msg:
             return
         total_size = format(len(msg), ">16")
-        # send length and msg
+        # send length and body
         self.send_raw(total_size)
         self.send_raw(msg)
 
