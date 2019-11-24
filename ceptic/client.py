@@ -29,6 +29,8 @@ def create_client_settings(version="1.0.0",
                 "default_port": 9000}
     if settings["frame_min_size"] > settings["frame_max_size"]:
         settings["frame_min_size"] = settings["frame_max_size"]
+    if settings["frame_min_size"] < 1000:
+        raise ValueError("frame_min_size must be at least 1000; was {}".format(settings["frame_min_size"]))
     return settings
 
 

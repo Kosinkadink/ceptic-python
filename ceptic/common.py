@@ -67,7 +67,10 @@ class CepticRequest(object):
         if not self.headers:
             self.headers = {}
         if self.body:
-            self.content_length = len(body)
+            if len(self.body) < 500:
+                self.content_length = 1000
+            else:
+                self.content_length = len(body)*2
         self.stream = None
         # TODO: Add properties to easily access common headers (and return None if not present)
 
@@ -131,7 +134,11 @@ class CepticResponse(object):
         if not self.headers:
             self.headers = {}
         if self.msg:
-            self.content_length = len(msg)
+            if self.msg:
+                if len(self.msg) < 500:
+                    self.content_length = 500
+                else:
+                    self.content_length = len(msg) * 2
         if errors:
             self.errors = errors
 

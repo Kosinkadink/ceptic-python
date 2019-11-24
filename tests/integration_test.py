@@ -199,9 +199,9 @@ def test_get_echo_body_multiple_frames(server_all_files, client_all_files):
     _here = test_get
     # init server and client; frame_max_size is set below size of body to force
     # multiple frames to be sent to transfer full data
-    with server_all_files(settings=create_server_settings(verbose=True, frame_max_size=10)) as app:
+    with server_all_files(settings=create_server_settings(verbose=True, frame_max_size=1000)) as app:
         _here.server = app
-        client = client_all_files(settings=create_client_settings(frame_max_size=10))
+        client = client_all_files(settings=create_client_settings(frame_max_size=1000))
 
         # add test get command
         @app.route("/", "get")
@@ -215,7 +215,7 @@ def test_get_echo_body_multiple_frames(server_all_files, client_all_files):
         app.start()
         # make request to server
         headers = dict()
-        body = "HELLOTHERE1HELLOTHERE2HELLOTHERE3"
+        body = "HELLOTHERE"*100
         response = client.connect_url("localhost:9000", "get", headers, body=body)
         # check that status was OK and msg was "no body"
         assert response.status == 200
@@ -240,7 +240,7 @@ def oldtest_get_echo_body_compression(server_all_files, client_all_files):
         # run server
         app.start()
         # make request to server
-        headers = {"Compress": "None"}
+        headers = {"Compress": "gzip"}
         # include a body smaller than frame_max_size
         body = "HELLOTHERE"
         response = client.connect_url("localhost:9000", "get", headers, body=body)

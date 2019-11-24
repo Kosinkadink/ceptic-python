@@ -40,6 +40,8 @@ def create_server_settings(port=9000, version="1.0.0",
                 "verbose": bool(verbose)}
     if settings["frame_min_size"] > settings["frame_max_size"]:
         settings["frame_min_size"] = settings["frame_max_size"]
+    if settings["frame_min_size"] < 1000:
+        raise ValueError("frame_min_size must be at least 1000; was {}".format(settings["frame_min_size"]))
     return settings
 
 

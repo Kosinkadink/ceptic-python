@@ -361,6 +361,7 @@ class StreamHandler(object):
     def get_next_frame(self, timeout=None):
         if timeout is None:
             timeout = self.settings["stream_timeout"]
+        expect_frame = True
         # if timeout is 0, then block and wait to get next frame
         if timeout == 0:
             if not self.is_ready_to_read() and not self.is_stopped():
@@ -368,40 +369,31 @@ class StreamHandler(object):
                 self.read_or_stop_event.wait(None)
             # clear read event
             self.read_or_stop_event.clear()
-            if self.is_stopped() and not self.is_ready_to_read():
-                raise StreamHandlerStoppedException("handler is stopped; cannot receive frames")
-            frame = self.get_ready_to_read()
-            # if a close frame, raise exception
-            if frame.is_close():
-                raise StreamClosedException(frame.get_data())
-            return frame
-        # if negative time (i.e. -1) do not block and immediately return
+        # if negative time do not block and immediately return
         elif timeout < 0:
-            if self.is_stopped() and not self.is_ready_to_read():
-                raise StreamHandlerStoppedException("handler is stopped; cannot receive frames")
-            frame = self.get_ready_to_read()
-            # if a close frame, raise exception
-            if frame.is_close():
-                raise StreamClosedException(frame.get_data())
-            return frame
+            expect_frame = False
         # wait up to specified time; if no frame received by then, return
-        timer = Timer()
-        timer.start()
-        if not self.is_ready_to_read() and not self.is_stopped():
-            # wait for read event
-            triggered = self.read_or_stop_event.wait(timeout)
-            # if not triggered, must have timed out
-            if not triggered:
-                raise StreamTimeoutException("handler {} has timed out getting next frame".format(self.stream_id))
-        # clear read event
-        self.read_or_stop_event.clear()
+        else:
+            if not self.is_ready_to_read() and not self.is_stopped():
+                # wait for read event
+                triggered = self.read_or_stop_event.wait(timeout)
+                # if not triggered, must have timed out
+                if not triggered:
+                    raise StreamTimeoutException("handler {} has timed out getting next frame".format(self.stream_id))
+            # clear read event
+            self.read_or_stop_event.clear()
         # if handler is stopped and no frames left to read, raise exception
         if self.is_stopped() and not self.is_ready_to_read():
             raise StreamHandlerStoppedException("handler is stopped; cannot receive frames")
-        frame = self.get_ready_to_read()
+        # get frame
+        frame = self.get_ready_to_read(expect_frame=expect_frame)
+        # if frame is None and not expecting frame to be returned, return the None frame
+        if not frame and not expect_frame:
+            return frame
+        # decompress frame data
+        frame.data = self.compressor.decompress(frame.get_data())
         # if a close frame, raise exception
         if frame.is_close():
-            self.stop()
             raise StreamClosedException(frame.get_data())
         return frame
 
@@ -421,7 +413,6 @@ class StreamHandler(object):
             # add data
             frames.append(frame.get_data())
             total_length += len(frame.get_data())
-            # full_data += frame.get_data()
             if max_length and total_length > max_length:  # len(full_data) > max_length:
                 raise StreamTotalDataSizeException("total data received has surpassed max_length of {}".format(
                     max_length))
@@ -429,10 +420,10 @@ class StreamHandler(object):
                 break
         # decompress data
         if version_info < (3, 0):  # Python2 code
-            compressed_full_data = "".join(frames)
+            full_data = "".join(frames)
         else:  # Python3 code
-            compressed_full_data = bytes().join(frames)
-        return self.compressor.decompress(compressed_full_data).decode()
+            full_data = bytes().join(frames)
+        return full_data.decode()
 
     def get_full_header_data(self, timeout=None):
         # length should be no more than allowed header size and max 128 command, 128 endpoint, and 2 \r\n (4 bytes)
@@ -506,7 +497,7 @@ class StreamHandler(object):
         except IndexError:
             return None
 
-    def get_ready_to_read(self):
+    def get_ready_to_read(self, expect_frame=False):
         """
         Return latest frame to read; pops frame id from frames_to_read deque
         :return: latest StreamFrame to read
@@ -514,6 +505,14 @@ class StreamHandler(object):
         try:
             return self.frames_to_read.popleft()
         except IndexError:
+            # workaround for weird Python2 issue, where deque may return positive length before item is readable
+            if version_info < (3, 0) and expect_frame:
+                # item should be readable shortly, so keep trying to get it
+                while True:
+                    try:
+                        return self.frames_to_read.popleft()
+                    except IndexError:
+                        pass
             return None
 
     def get_manager_pipe(self):
@@ -524,14 +523,20 @@ class StreamHandler(object):
 
 
 class StreamFrameGen(object):
-    __slots__ = ("stream",)
+    __slots__ = ("stream", "_frame_size")
 
     def __init__(self, stream):
         self.stream = stream
+        self._frame_size = 0
+        self.frame_size = self.stream.frame_size//2
 
     @property
     def frame_size(self):
-        return self.stream.frame_size
+        return self._frame_size
+
+    @frame_size.setter
+    def frame_size(self, size):
+        self._frame_size = size
 
     @property
     def stream_id(self):
@@ -544,10 +549,12 @@ class StreamFrameGen(object):
         :return: StreamFrame instance of type data
         """
         # get current chunk
-        curr_chunk = file_object.read(self.stream.frame_size)
+        curr_chunk = file_object.read(self.frame_size)
         if not curr_chunk:
             return
         while True:
+            # compress current chunk
+            curr_chunk = self.stream.compressor.compress(curr_chunk)
             # get next chunk from file
             next_chunk = file_object.read(self.frame_size)
             # if nothing was left to read, yield last frame with current chunk
@@ -567,15 +574,16 @@ class StreamFrameGen(object):
         """
         if not data:
             return
-        compressed_data = self.stream.compressor.compress(data)
         i = 0
         while True:
             # get chunk of data
-            chunk = compressed_data[i:i + self.frame_size]
+            chunk = data[i:i + self.frame_size]
             # iterate chunk's starting index
             i += self.frame_size
+            # compress chunk
+            chunk = self.stream.compressor.compress(chunk)
             # if next chunk will be out of bounds, yield last frame
-            if i >= len(compressed_data):
+            if i >= len(data):
                 yield StreamFrame.create_data_last(self.stream_id, chunk)
                 return
             # otherwise yield continued frame
