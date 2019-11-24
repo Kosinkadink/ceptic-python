@@ -14,7 +14,7 @@ from ceptic.managers.endpointmanager import EndpointManager
 from ceptic.managers.certificatemanager import CertificateManager, CertificateManagerException, create_ssl_config
 from ceptic.managers.streammanager import StreamManager, StreamException, StreamClosedException, \
     StreamTotalDataSizeException, StreamFrameGen
-from ceptic.compress import CompressGetter, UnknownCompressionException
+from ceptic.encode import EncodeGetter, UnknownEncodingException
 
 
 def create_server_settings(port=9000, version="1.0.0",
@@ -377,7 +377,7 @@ class CepticServer(object):
         command_func = handler = variable_dict = None
         try:
             request = CepticRequest.from_data(stream.get_full_header_data())
-        except UnknownCompressionException as e:
+        except UnknownEncodingException as e:
             errors.append(str(e))
         if not errors:
             # began checking validity of request
@@ -408,7 +408,7 @@ class CepticServer(object):
         if not errors:
             stream.sendall(CepticResponse(200).generate_frames(stream))
             # set stream compression, based on request header
-            stream.set_compress(request.compress)
+            stream.set_encode(request.encoding)
             command_func(stream, request, handler, variable_dict)
         # otherwise send info back
         else:

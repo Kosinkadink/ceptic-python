@@ -95,14 +95,14 @@ class CepticRequest(object):
         self.headers["Content-Type"] = value
 
     @property
-    def compress(self):
+    def encoding(self):
         if self.headers:
-            return self.headers.get("Compress")
+            return self.headers.get("Encoding")
         return None
 
-    @compress.setter
-    def compress(self, value):
-        self.headers["Compress"] = value
+    @encoding.setter
+    def encoding(self, value):
+        self.headers["Encoding"] = value
 
     def generate_frames(self, stream):
         json_headers = json.dumps(self.headers)
@@ -287,4 +287,4 @@ def decode_unicode_hook(json_pairs):
 
 
 from ceptic.managers.streammanager import StreamFrame, StreamFrameGen
-from ceptic.compress import CompressGetter
+from ceptic.encode import EncodeGetter

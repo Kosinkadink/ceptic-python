@@ -6,7 +6,7 @@ from sys import version_info
 from collections import deque
 from ceptic.common import CepticException, Timer
 from ceptic.network import select_ceptic
-from ceptic.compress import CompressGetter
+from ceptic.encode import EncodeGetter
 
 
 class StreamManagerException(CepticException):
@@ -282,8 +282,8 @@ class StreamHandler(object):
         self.keep_alive_timer = Timer()
         self.keep_alive_timer.start()
         # compression
-        self._compressor = None
-        self.set_compress(None)
+        self._encoder = None
+        self.set_encode(None)
 
     @property
     def frame_size(self):
@@ -298,11 +298,11 @@ class StreamHandler(object):
         return self.settings["stream_timeout"]
 
     @property
-    def compressor(self):
-        return self._compressor
+    def encoder(self):
+        return self._encoder
 
-    def set_compress(self, name):
-        self._compressor = CompressGetter.get(name)
+    def set_encode(self, name):
+        self._encoder = EncodeGetter.get(name)
 
     def stop(self):
         self.read_or_stop_event.set()
@@ -391,7 +391,7 @@ class StreamHandler(object):
         if not frame and not expect_frame:
             return frame
         # decompress frame data
-        frame.data = self.compressor.decompress(frame.get_data())
+        frame.data = self.encoder.decode(frame.get_data())
         # if a close frame, raise exception
         if frame.is_close():
             raise StreamClosedException(frame.get_data())
@@ -553,8 +553,8 @@ class StreamFrameGen(object):
         if not curr_chunk:
             return
         while True:
-            # compress current chunk
-            curr_chunk = self.stream.compressor.compress(curr_chunk)
+            # encode current chunk
+            curr_chunk = self.stream.encoder.encode(curr_chunk)
             # get next chunk from file
             next_chunk = file_object.read(self.frame_size)
             # if nothing was left to read, yield last frame with current chunk
@@ -580,8 +580,8 @@ class StreamFrameGen(object):
             chunk = data[i:i + self.frame_size]
             # iterate chunk's starting index
             i += self.frame_size
-            # compress chunk
-            chunk = self.stream.compressor.compress(chunk)
+            # encode chunk
+            chunk = self.stream.encoder.encode(chunk.encode())
             # if next chunk will be out of bounds, yield last frame
             if i >= len(data):
                 yield StreamFrame.create_data_last(self.stream_id, chunk)

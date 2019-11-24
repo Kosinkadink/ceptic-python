@@ -10,7 +10,7 @@ from ceptic.managers.endpointmanager import EndpointManager
 from ceptic.managers.certificatemanager import CertificateManager, CertificateManagerException, create_ssl_config
 from ceptic.managers.streammanager import StreamManager, StreamFrameGen, StreamClosedException, StreamException, \
     StreamTotalDataSizeException
-from ceptic.compress import CompressGetter, UnknownCompressionException
+from ceptic.encode import EncodeGetter, UnknownEncodingException
 
 
 def create_client_settings(version="1.0.0",
@@ -320,7 +320,7 @@ class CepticClient(object):
             # set request settings
             request.settings = settings
             # set stream compression, based on request header
-            stream.set_compress(request.compress)
+            stream.set_encode(request.encoding)
             # perform command and get back response
             response = command_func(stream, request)
             return response

@@ -222,7 +222,7 @@ def test_get_echo_body_multiple_frames(server_all_files, client_all_files):
         assert response.msg == body
 
 
-def oldtest_get_echo_body_compression(server_all_files, client_all_files):
+def test_get_echo_body_encoding(server_all_files, client_all_files):
     _here = test_get
     # init server and client
     with server_all_files(settings=create_server_settings(verbose=True)) as app:
@@ -239,14 +239,19 @@ def oldtest_get_echo_body_compression(server_all_files, client_all_files):
 
         # run server
         app.start()
+        # encodings to test
+        encodings = ["gzip", "base64", "gzip,base64"]
         # make request to server
-        headers = {"Compress": "gzip"}
-        # include a body smaller than frame_max_size
-        body = "HELLOTHERE"
-        response = client.connect_url("localhost:9000", "get", headers, body=body)
-        # check that status was OK and msg was "no body"
-        assert response.status == 200
-        assert response.msg == body
+        for encoding in encodings:
+            headers = {"Encoding": encoding}
+            # include a body smaller than frame_max_size
+            body = "HELLOTHERE"
+            response = client.connect_url("localhost:9000", "get", headers, body=body)
+            # check that status was OK and msg was "no body"
+            if response.status != 200:
+                pytest.fail("{} != 200 for encoding: {}".format(response.status, encoding))
+            if response.msg != body:
+                pytest.fail("{} != {} for encoding: {}".format(response.msg, body, encoding))
 
 
 def test_get_only_server_related_files(server_certfile_keyfile_only, client_cafile_only):
