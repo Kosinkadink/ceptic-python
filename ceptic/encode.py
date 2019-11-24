@@ -161,3 +161,11 @@ class EncodeGetter(object):
                 encoder_list.append(encode_class)
         # create and return EncodeHandler
         return EncodeHandler(encoder_list)
+
+    @staticmethod
+    def check(encodings):
+        try:
+            EncodeGetter.get(encodings)
+            return True, None
+        except UnknownEncodingException as e:
+            return False, str(e)

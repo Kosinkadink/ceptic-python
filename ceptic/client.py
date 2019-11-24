@@ -138,6 +138,11 @@ class CepticClient(object):
             raise ValueError("json headers are {} chars too long; max size is {}".format(
                 len(json_headers) - self.settings["headers_max_size"],
                 self.settings["headers_max_size"]))
+        # verify encoding header
+        if request.encoding:
+            valid, error = EncodeGetter.check(request.encoding)
+            if not valid:
+                raise ValueError("encoding header not valid; {}".format(error))
 
     def connect_ip(self, host, port, command, endpoint, headers, body=None, force_new_stream=False):  # connect to ip
         """

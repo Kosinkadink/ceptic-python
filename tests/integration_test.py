@@ -254,6 +254,34 @@ def test_get_echo_body_encoding(server_all_files, client_all_files):
                 pytest.fail("{} != {} for encoding: {}".format(response.msg, body, encoding))
 
 
+def test_get_echo_body_encoding_invalid(server_all_files, client_all_files):
+    _here = test_get
+    # init server and client
+    with server_all_files(settings=create_server_settings(verbose=True)) as app:
+        _here.server = app
+        client = client_all_files()
+
+        # add test get command
+        @app.route("/", "get")
+        def get_command_test_route(request):
+            print("inside get_command_test_route")
+            if request.body is not None:
+                return 200, request.body
+            return 200, "no body"
+
+        # run server
+        app.start()
+        # encodings to test
+        encodings = ["0gzip", "gz0ip,base64", "gzip,0base64"]
+        # make request to server
+        for encoding in encodings:
+            headers = {"Encoding": encoding}
+            # include a body smaller than frame_max_size
+            body = "HELLOTHERE"
+            with pytest.raises(CepticException):
+                client.connect_url("localhost:9000", "get", headers, body=body)
+
+
 def test_get_only_server_related_files(server_certfile_keyfile_only, client_cafile_only):
     _here = test_get_only_server_related_files
     # init server and client

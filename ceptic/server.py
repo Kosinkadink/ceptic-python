@@ -425,6 +425,11 @@ class CepticServer(object):
             if request.headers["Content-Length"] > request.settings["maxBodyLength"]:
                 errors.append("Content-Length exceeds server's allowed max body length of {}".format(
                     request.settings["maxBodyLength"]))
+        # check that encoding is recognized and valid
+        if request.encoding:
+            valid, error = EncodeGetter.check(request.encoding)
+            if not valid:
+                errors.append("Encoding is not valid; {}".format(error))
         return errors
 
     def route(self, endpoint, command, settings_override=None):
