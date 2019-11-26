@@ -284,6 +284,8 @@ class StreamHandler(object):
         # compression
         self._encoder = None
         self.set_encode(None)
+        # StreamFrameGen
+        self.stream_frame_gen = StreamFrameGen(self)
 
     @property
     def frame_size(self):
@@ -322,7 +324,8 @@ class StreamHandler(object):
 
     def send_close(self, data=""):
         try:
-            self.send(StreamFrame.create_close(self.stream_id, data=data))
+            encoded_data = self.encoder.encode(data.encode())
+            self.send(StreamFrame.create_close(self.stream_id, data=encoded_data))
         except StreamHandlerStoppedException:
             pass
         self.stop()
@@ -344,6 +347,12 @@ class StreamHandler(object):
     def sendall(self, frames):
         for frame in frames:
             self.send(frame)
+
+    def send_data(self, data):
+        self.sendall(self.stream_frame_gen.from_data(data))
+
+    def send_file(self, file):
+        self.sendall(self.stream_frame_gen.from_file(file))
 
     def add_to_read(self, frame):
         """

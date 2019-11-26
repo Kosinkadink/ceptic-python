@@ -172,6 +172,16 @@ class CepticResponse(object):
     def content_type(self, value):
         self.headers["Content-Type"] = value
 
+    @property
+    def exchange(self):
+        if self.headers:
+            return self.headers.get("Exchange")
+        return None
+
+    @exchange.setter
+    def exchange(self, value):
+        self.headers["Exchange"] = value
+
     def is_success(self):
         return CepticStatusCode.is_success(self.status)
 

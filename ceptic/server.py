@@ -45,6 +45,18 @@ def create_server_settings(port=9000, version="1.0.0",
     return settings
 
 
+def begin_exchange(request):
+    """
+    Sends CepticResponse to client to start continuous exchange with server
+    :param request: CepticRequest instance
+    :return: StreamHandler instance from CepticRequest (request.stream)
+    """
+    response = CepticResponse(status=200)
+    response.exchange = True
+    request.stream.sendall(response.generate_frames(request.stream))
+    return request.stream
+
+
 def basic_server_command(stream, request, endpoint_func, endpoint_dict):
     # get body if content length header is present
     if request.content_length:

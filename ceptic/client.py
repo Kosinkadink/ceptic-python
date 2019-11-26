@@ -51,6 +51,7 @@ def basic_client_command(stream, request):
     except StreamClosedException as e:
         return CepticResponse(400, errors=str(e))
     response = CepticResponse.from_data(response_data)
+    response.stream = stream
     # if content length header present, receive response body
     if response.content_length:
         # TODO: Add file transfer functionality
