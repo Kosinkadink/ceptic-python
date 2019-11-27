@@ -324,8 +324,7 @@ class StreamHandler(object):
 
     def send_close(self, data=""):
         try:
-            encoded_data = self.encoder.encode(data.encode())
-            self.send(StreamFrame.create_close(self.stream_id, data=encoded_data))
+            self.send(StreamFrame.create_close(self.stream_id, data=data))
         except StreamHandlerStoppedException:
             pass
         self.stop()
@@ -341,6 +340,7 @@ class StreamHandler(object):
         if self.use_processes:
             pass
         else:
+            frame.data = self.encoder.encode(frame.get_data().encode())
             self.frames_to_send.append(frame)
             self.send_event.set()
 
@@ -351,8 +351,8 @@ class StreamHandler(object):
     def send_data(self, data):
         self.sendall(self.stream_frame_gen.from_data(data))
 
-    def send_file(self, file):
-        self.sendall(self.stream_frame_gen.from_file(file))
+    def send_file(self, file_object):
+        self.sendall(self.stream_frame_gen.from_file(file_object))
 
     def add_to_read(self, frame):
         """
@@ -562,8 +562,6 @@ class StreamFrameGen(object):
         if not curr_chunk:
             return
         while True:
-            # encode current chunk
-            curr_chunk = self.stream.encoder.encode(curr_chunk)
             # get next chunk from file
             next_chunk = file_object.read(self.frame_size)
             # if nothing was left to read, yield last frame with current chunk
@@ -589,8 +587,6 @@ class StreamFrameGen(object):
             chunk = data[i:i + self.frame_size]
             # iterate chunk's starting index
             i += self.frame_size
-            # encode chunk
-            chunk = self.stream.encoder.encode(chunk.encode())
             # if next chunk will be out of bounds, yield last frame
             if i >= len(data):
                 yield StreamFrame.create_data_last(self.stream_id, chunk)
