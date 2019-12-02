@@ -104,19 +104,19 @@ class CepticRequest(object):
     def encoding(self, value):
         self.headers["Encoding"] = value
 
-    def generate_frames(self, stream):
+    @property
+    def authorization(self):
+        if self.headers:
+            return self.headers.get("Authorization")
+        return None
+
+    @authorization.setter
+    def authorization(self, value):
+        self.headers["Authorization"] = value
+
+    def get_data(self):
         json_headers = json.dumps(self.headers)
-        data = "{}\r\n{}\r\n{}".format(self.command, self.endpoint, json_headers)
-        generator = StreamFrameGen(stream).from_data(data)
-        # make first frame type header
-        try:
-            frame = next(generator)
-        except StopIteration:
-            return
-        frame.set_to_header()
-        yield frame
-        for frame in generator:
-            yield frame
+        return "{}\r\n{}\r\n{}".format(self.command, self.endpoint, json_headers)
 
     @classmethod
     def from_data(cls, data):
@@ -197,11 +197,8 @@ class CepticResponse(object):
     def get_dict(self):
         return {"status": self.status, "body": self.body, "headers": self.headers}
 
-    def generate_frames(self, stream):
-        data = "{}\r\n{}".format(self.status, json.dumps(self.headers))
-        generator = StreamFrameGen(stream).from_data(data)
-        for frame in generator:
-            yield frame
+    def get_data(self):
+        return "{}\r\n{}".format(self.status, json.dumps(self.headers))
 
     @classmethod
     def from_data(cls, data):
@@ -274,10 +271,6 @@ def normalize_path(path):
     return path
 
 
-def is_os_windows():
-    return os.name == 'nt'
-
-
 def decode_unicode_hook(json_pairs):
     """
     Given json pairs, properly encode strings into utf-8 for general usage
@@ -297,4 +290,4 @@ def decode_unicode_hook(json_pairs):
 
 
 from ceptic.managers.streammanager import StreamFrame, StreamFrameGen
-from ceptic.encode import EncodeGetter
+from ceptic.encode import EncodeBase64

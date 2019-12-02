@@ -63,15 +63,17 @@ class StreamManager(threading.Thread):
     Used for managing a stream of data to and from a socket; input a socket
     """
 
-    def __init__(self, s, name, removal_func, settings, is_server=False, conn_func=None, conn_func_args=None):
+    def __init__(self, s, name, settings, is_server=False, conn_func=None, conn_func_args=None, remove_func=None,
+                 closed_event=None):
         threading.Thread.__init__(self)
         self.s = s
         self.name = name
-        self.removal_func = removal_func
         self.settings = settings
         self.is_server = is_server
         self.conn_func = conn_func
         self.conn_func_args = conn_func_args
+        self.remove_func = remove_func
+        self.closed_event = closed_event
         # control vars
         self.shouldStop = threading.Event()
         self.stop_reason = ""
@@ -139,6 +141,7 @@ class StreamManager(threading.Thread):
         # close any remaining headers
         self.close_all_handlers()
         self.isRunning = False
+        self.close_manager()
 
     def clean_handlers(self):
         while not self.shouldStop.is_set():
@@ -196,8 +199,9 @@ class StreamManager(threading.Thread):
                     stream_id = self.create_handler(stream_id=received_frame.get_stream_id())
                     self.streams[stream_id].add_to_read(received_frame)
                     # handle in new thread
-                    conn_thread = threading.Thread(target=self.conn_func, args=(
-                        self.streams[stream_id], self.settings, self.conn_func_args))
+                    args = [self.streams[stream_id], self.settings]
+                    args.extend(self.conn_func_args)  # add conn_func_args to args list
+                    conn_thread = threading.Thread(target=self.conn_func, args=args)
                     conn_thread.daemon = True
                     conn_thread.start()
                     # close handler if over limit
@@ -212,8 +216,7 @@ class StreamManager(threading.Thread):
     def create_handler(self, stream_id=None):
         if stream_id is None:
             stream_id = str(uuid.uuid4())
-        self.streams[stream_id] = StreamHandler(stream_id=stream_id, settings=self.settings, send_event=self.send_event,
-                                                use_processes=self.use_processes)
+        self.streams[stream_id] = StreamHandler(stream_id=stream_id, settings=self.settings, send_event=self.send_event)
         self.handler_count += 1  # add to handler_count
         return stream_id
 
@@ -249,32 +252,32 @@ class StreamManager(threading.Thread):
     def is_stopped(self):
         return self.shouldStop and not self.isRunning
 
-    @classmethod
-    def client(cls, socket, name, settings, removal_func):
-        return cls(s=socket, name=name, removal_func=removal_func, settings=settings)
+    def close_manager(self):
+        if self.is_server:
+            self.closed_event.set()
+        else:
+            self.remove_func(self.name)
 
     @classmethod
-    def server(cls, socket, name, settings, conn_func, conn_func_args, removal_func):
-        return cls(s=socket, name=name, removal_func=removal_func, settings=settings, is_server=True,
-                   conn_func=conn_func, conn_func_args=conn_func_args)
+    def client(cls, socket, name, settings, remove_func):
+        return cls(s=socket, name=name, settings=settings, remove_func=remove_func)
+
+    @classmethod
+    def server(cls, socket, name, settings, conn_func, conn_func_args, closed_event):
+        return cls(s=socket, name=name, settings=settings, is_server=True,
+                   conn_func=conn_func, conn_func_args=conn_func_args, closed_event=closed_event)
 
 
 class StreamHandler(object):
-    def __init__(self, stream_id, settings, send_event, use_processes=False):
+    def __init__(self, stream_id, settings, send_event):
         self.stream_id = stream_id
         self.settings = settings
         self.send_event = send_event
-        self.use_processes = use_processes
         # event for stopping stream
         self.shouldStop = threading.Event()
         self.change_id = None
         # event for received frame
         self.read_or_stop_event = threading.Event()
-        # pipes for multiprocessing purposes
-        self.manager_pipe = None
-        self.handler_pipe = None
-        if use_processes:
-            self.manager_pipe, self.handler_pipe = Pipe()
         # deques to store frames
         self.frames_to_send = deque()
         self.frames_to_read = deque()
@@ -337,19 +340,16 @@ class StreamHandler(object):
         if self.is_stopped():
             raise StreamHandlerStoppedException("handler is stopped; cannot send frames through a stopped handler")
         self.keep_alive_timer.update()
-        if self.use_processes:
-            pass
-        else:
-            frame.data = self.encoder.encode(frame.get_data().encode())
-            self.frames_to_send.append(frame)
-            self.send_event.set()
+        frame.data = self.encoder.encode(frame.get_data().encode())
+        self.frames_to_send.append(frame)
+        self.send_event.set()
 
     def sendall(self, frames):
         for frame in frames:
             self.send(frame)
 
-    def send_data(self, data):
-        self.sendall(self.stream_frame_gen.from_data(data))
+    def send_data(self, data, is_first_header=False):
+        self.sendall(self.stream_frame_gen.from_data(data, is_first_header))
 
     def send_file(self, file_object):
         self.sendall(self.stream_frame_gen.from_file(file_object))
@@ -361,11 +361,8 @@ class StreamHandler(object):
         :return: None
         """
         self.keep_alive_timer.update()
-        if self.use_processes:
-            self.manager_pipe.send(frame)
-        else:
-            self.frames_to_read.append(frame)
-            self.read_or_stop_event.set()
+        self.frames_to_read.append(frame)
+        self.read_or_stop_event.set()
 
     def get_next_frame(self, timeout=None):
         if timeout is None:
@@ -524,12 +521,6 @@ class StreamHandler(object):
                         pass
             return None
 
-    def get_manager_pipe(self):
-        return self.manager_pipe
-
-    def get_handler_pipe(self):
-        return self.handler_pipe
-
 
 class StreamFrameGen(object):
     __slots__ = ("stream", "_frame_size")
@@ -573,10 +564,11 @@ class StreamFrameGen(object):
             # next chunk becomes current chunk
             curr_chunk = next_chunk
 
-    def from_data(self, data):
+    def from_data(self, data, is_first_header=False):
         """
         Generator for turning contents of file into frames
         :param data: string or byte array
+        :param is_first_header: boolean
         :return: StreamFrame instance of type data
         """
         if not data:
@@ -589,10 +581,18 @@ class StreamFrameGen(object):
             i += self.frame_size
             # if next chunk will be out of bounds, yield last frame
             if i >= len(data):
-                yield StreamFrame.create_data_last(self.stream_id, chunk)
+                if is_first_header:
+                    is_first_header = False
+                    yield StreamFrame.create_header_last(self.stream_id, chunk)
+                else:
+                    yield StreamFrame.create_data_last(self.stream_id, chunk)
                 return
             # otherwise yield continued frame
-            yield StreamFrame.create_data_continued(self.stream_id, chunk)
+            if is_first_header:
+                is_first_header = False
+                yield StreamFrame.create_header_continued(self.stream_id, chunk)
+            else:
+                yield StreamFrame.create_data_continued(self.stream_id, chunk)
 
 
 class StreamFrame(object):
@@ -764,6 +764,22 @@ class StreamFrame(object):
         :return: StreamFrame instance
         """
         return cls(stream_id, StreamFrame.enum_type["header"], frame_info, data)
+
+    @classmethod
+    def create_header_last(cls, stream_id, data):
+        """
+        Returns frame initialized as header type, end
+        :return: StreamFrame instance
+        """
+        return cls(stream_id, StreamFrame.enum_type["header"], StreamFrame.enum_info["end"], data)
+
+    @classmethod
+    def create_header_continued(cls, stream_id, data):
+        """
+        Returns frame initialized as header type, continue
+        :return: StreamFrame instance
+        """
+        return cls(stream_id, StreamFrame.enum_type["header"], StreamFrame.enum_info["continue"], data)
 
     @classmethod
     def create_data(cls, stream_id, data, frame_info=enum_info["end"]):

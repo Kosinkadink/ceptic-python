@@ -5,7 +5,7 @@ import uuid
 from sys import version_info
 from ceptic.network import SocketCeptic
 from ceptic.common import CepticStatusCode, CepticResponse, CepticRequest, CepticCommands, CepticException
-from ceptic.common import create_command_settings, decode_unicode_hook, is_os_windows
+from ceptic.common import create_command_settings, decode_unicode_hook
 from ceptic.managers.endpointmanager import EndpointManager
 from ceptic.managers.certificatemanager import CertificateManager, CertificateManagerException, create_ssl_config
 from ceptic.managers.streammanager import StreamManager, StreamFrameGen, StreamClosedException, StreamException, \
@@ -121,6 +121,11 @@ class CepticClient(object):
         )
 
     def verify_request(self, request):
+        """
+        Check that request is valid; raises a ValueError with reason if invalid
+        :param request: CepticRequest instance
+        :return: None
+        """
         # verify command is of proper length and exists in endpoint manager
         if not request.command:
             raise ValueError("command must be provided")
@@ -167,9 +172,9 @@ class CepticClient(object):
         except ValueError as e:
             raise CepticException(e)
         # if a stream manager does not exist for this host/port combo, open one
-        name = (host, port)
+        name = str((host, port))
         if force_new_stream or self.is_manager_full(name):
-            name = uuid.uuid4()
+            name = str(uuid.uuid4())
         if not self.get_manager(name):
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             # s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
@@ -222,6 +227,11 @@ class CepticClient(object):
         return self.connect_ip(None, None, None, None, None, request=request, force_new_stream=force_new_stream)
 
     def get_details_from_url(self, url):
+        """
+        Return host, port, endpoint tuple from url string
+        :param url: string url
+        :return: tuple containing host, port, endpoint
+        """
         endpoint = ""
         host_port_and_endpoint = url.strip().split("/", 1)
         host_and_port = host_port_and_endpoint[0]
@@ -307,9 +317,19 @@ class CepticClient(object):
         manager.start()
 
     def get_manager(self, name):
+        """
+        Get corresponding StreamManager instance from managerDict, or None
+        :param name: string manager name
+        :return: StreamManager instance or None
+        """
         return self.managerDict.get(name)
 
     def is_manager_full(self, name):
+        """
+        Returns whether or not manager is at handler limit
+        :param name: string manager name
+        :return: boolean
+        """
         manager = self.get_manager(name)
         if not manager:
             return False
@@ -319,11 +339,11 @@ class CepticClient(object):
         """
         Perform general ceptic protocol handshake to continue connection
         :param stream: StreamHandler instance
-        :param request:
+        :param request: CepticRequest instance
         :return: CepticResponse instance
         """
         # create frames from request and send
-        stream.sendall(request.generate_frames(stream))
+        stream.send_data(request.get_data(), is_first_header=True)
         # wait for response
         try:
             response_data = stream.get_full_data()
@@ -353,6 +373,7 @@ class CepticClient(object):
         """
         self.shouldStop = True
         self.close_all_managers()
+        self.isRunning = False
 
     def is_stopped(self):
         """
@@ -361,11 +382,26 @@ class CepticClient(object):
         return self.shouldStop and not self.isRunning
 
     def close_all_managers(self):
+        """
+        Closes all client managers
+        :return: None
+        """
         keys = list(self.managerDict)
         for key in keys:
-            self.managerDict[key].stop()
+            try:
+                self.managerDict[key].stop()
+            except KeyError:
+                pass
             self.remove_manager(key)
 
     def remove_manager(self, name):
+        """
+        Remove manager with corresponding name
+        :param name: string name of manager to remove
+        :return: None
+        """
         if self.managerDict.get(name):
-            self.managerDict.pop(name)
+            try:
+                self.managerDict.pop(name)
+            except KeyError:
+                pass

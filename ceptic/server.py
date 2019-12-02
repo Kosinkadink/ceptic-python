@@ -7,9 +7,10 @@ import copy
 import uuid
 
 from sys import version_info
+from multiprocessing import Event
 from ceptic.network import SocketCeptic
 from ceptic.common import CepticRequest, CepticResponse, CepticStatusCode, CepticException
-from ceptic.common import create_command_settings, decode_unicode_hook, is_os_windows
+from ceptic.common import create_command_settings, decode_unicode_hook
 from ceptic.managers.endpointmanager import EndpointManager
 from ceptic.managers.certificatemanager import CertificateManager, CertificateManagerException, create_ssl_config
 from ceptic.managers.streammanager import StreamManager, StreamException, StreamClosedException, \
@@ -53,7 +54,7 @@ def begin_exchange(request):
     """
     response = CepticResponse(status=200)
     response.exchange = True
-    request.stream.sendall(response.generate_frames(request.stream))
+    request.stream.send_data(response.get_data())
     return request.stream
 
 
@@ -107,9 +108,9 @@ def basic_server_command(stream, request, endpoint_func, endpoint_dict):
                                                 type(response)))
             if request.config_settings["verbose"]:
                 print("Exception type ({}) raised while generating response: {}".format(type(e), str(e)))
-            stream.sendall(error_response.generate_frames(stream))
+            stream.send_data(error_response.get_data())
             return
-    stream.sendall(response.generate_frames(stream))
+    stream.send_data(response.get_data())
     # if Content-Length header present, send response body
     if response.content_length:
         # TODO: Add file transfer functionality
@@ -150,6 +151,7 @@ class CepticServer(object):
         self.settings = settings
         self.shouldStop = False
         self.isRunning = False
+        self.closed_manager_event = Event()
         # set up endpoint manager
         self.endpointManager = EndpointManager.server()
         # set up certificate manager
@@ -369,9 +371,9 @@ class CepticServer(object):
             s.send_raw(format(stream_settings["stream_timeout"], ">4"))
             s.send_raw(format(stream_settings["handler_max_count"], ">4"))
         # create StreamManager
-        manager_uuid = uuid.uuid4()
+        manager_uuid = str(uuid.uuid4())
         manager = StreamManager.server(s, manager_uuid, stream_settings, CepticServer.handle_new_connection,
-                                       self.endpointManager, self.remove_manager)
+                                       (self.endpointManager,), self.closed_manager_event)
         self.managerDict[manager_uuid] = manager
         manager.daemon = True
         manager.start()
@@ -414,14 +416,14 @@ class CepticServer(object):
             errors.extend(CepticServer.check_new_connection_headers(request, server_settings))
             # if no errors, send positive response and continue
         if not errors:
-            stream.sendall(CepticResponse(200).generate_frames(stream))
+            stream.send_data(CepticResponse(200).get_data())
             # set stream compression, based on request header
             stream.set_encode(request.encoding)
             command_func(stream, request, handler, variable_dict)
         # otherwise send info back
         else:
             # send frame with error and bad status
-            stream.sendall(CepticResponse(400, errors=errors).generate_frames(stream))
+            stream.send_data(CepticResponse(400, errors=errors).get_data())
             stream.send_close()
 
     @staticmethod
