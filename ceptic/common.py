@@ -1,5 +1,4 @@
 import os
-import sys
 import json
 from sys import version_info
 from time import time

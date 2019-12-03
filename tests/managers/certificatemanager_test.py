@@ -1,6 +1,5 @@
 import os
 import pytest
-from sys import version_info
 from ceptic.managers.certificatemanager import CertificateManager, CertificateManagerException, create_ssl_config
 
 

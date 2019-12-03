@@ -46,7 +46,7 @@ class EndpointClientManager(EndpointManager):
         """
         try:
             self.commandMap.pop(command)
-        except KeyError as e:
+        except KeyError:
             return None
 
 
@@ -75,7 +75,7 @@ class EndpointServerManager(EndpointManager):
         """
         try:
             self.commandMap.pop(command)
-        except KeyError as e:
+        except KeyError:
             return None
 
     def add_endpoint(self, command, endpoint, handler, settings_override=None):
@@ -83,6 +83,7 @@ class EndpointServerManager(EndpointManager):
         Add endpoint to a command
         :param command: string representing command OR list/tuple containing multiple string commands
         :param endpoint: unique string name representing endpoint
+        :param handler: function corresponding to endpoint behavior
         :param settings_override: dictionary representing setting values
         :return: None
         """
@@ -166,12 +167,13 @@ class EndpointServerManager(EndpointManager):
         """
         try:
             self.commandMap[command][0].pop(self.convert_endpoint_into_regex(endpoint))
-        except KeyError as e:
+        except KeyError:
             return None
-        except IndexError as e:
+        except IndexError:
             return None
 
-    def convert_endpoint_into_regex(self, endpoint):
+    @staticmethod
+    def convert_endpoint_into_regex(endpoint):
         # regex strings
         allowed_regex = r'^[a-zA-Z0-9\-\.\<\>_/]+$'  # alphanum and -.<>_
         start_slash_regex = '^/{2,}'  # 2 or more slashes at start

@@ -1,19 +1,15 @@
-import json
 import select
 import socket
 import threading
-import functools
 import copy
 import uuid
 
-from sys import version_info
-from multiprocessing import Queue as multiprocessing_Queue
 from ceptic.network import SocketCeptic
 from ceptic.common import CepticRequest, CepticResponse, CepticStatusCode, CepticException
 from ceptic.common import create_command_settings, decode_unicode_hook
 from ceptic.managers.endpointmanager import EndpointManager
 from ceptic.managers.certificatemanager import CertificateManager, CertificateManagerException, create_ssl_config
-from ceptic.managers.streammanager import StreamManager, StreamManagerRunner, StreamException, StreamClosedException, \
+from ceptic.managers.streammanager import StreamManager, StreamException, StreamClosedException, \
     StreamTotalDataSizeException, StreamFrameGen
 from ceptic.encode import EncodeGetter, UnknownEncodingException
 
@@ -23,7 +19,7 @@ def create_server_settings(port=9000, version="1.0.0",
                            frame_min_size=1024000, frame_max_size=1024000,
                            content_max_size=10240000,
                            stream_min_timeout=5, stream_timeout=5, handler_max_count=0, block_on_start=False,
-                           max_parallel_count=1, request_queue_size=10, verbose=False):
+                           request_queue_size=10, verbose=False):
     settings = {"port": int(port),
                 "version": str(version),
                 "headers_min_size": int(headers_min_size),
@@ -35,10 +31,8 @@ def create_server_settings(port=9000, version="1.0.0",
                 "stream_timeout": int(stream_timeout),
                 "handler_max_count": int(handler_max_count),
                 "block_on_start": bool(block_on_start),
-                "max_parallel_count": int(max_parallel_count),
                 "request_queue_size": int(request_queue_size),
                 "verbose": bool(verbose)}
-    settings["use_processes"] = settings["max_parallel_count"] > 1
     if settings["frame_min_size"] > settings["frame_max_size"]:
         settings["frame_min_size"] = settings["frame_max_size"]
     if settings["frame_min_size"] < 1000:
@@ -162,9 +156,6 @@ class CepticServer(object):
         self.managerDict = {}
         self.manager_closed_event = threading.Event()
         self.clean_timeout = 0.5
-        # create StreamManagerRunner list for multiprocessing purposes
-        self.runnerList = []
-        self.manager_queue = None
         # initialize
         self.initialize()
 
@@ -253,15 +244,10 @@ class CepticServer(object):
         # queue up to specified number of requests
         server_socket.listen(self.settings["request_queue_size"])
         socket_list.append(server_socket)
-        clean_thread = None
-        # if use_processes, start up the corresponding amount of StreamManagerRunner instances
-        if self.settings["use_processes"]:
-            self.start_runners(self.settings["max_parallel_count"])
-        # otherwise, create a clean thread for managers
-        else:
-            clean_thread = threading.Thread(target=self.clean_managers)
-            clean_thread.daemon = True
-            clean_thread.start()
+        # start clean thread
+        clean_thread = threading.Thread(target=self.clean_managers)
+        clean_thread.daemon = True
+        clean_thread.start()
         self.isRunning = True
 
         while not self.shouldStop:
@@ -278,11 +264,8 @@ class CepticServer(object):
                     new_thread.start()
         # shut down managers
         self.close_all_managers()
-        # shut down runners
-        self.close_all_runners()
         # wait for clean thread to finish
-        if not self.settings["use_processes"]:
-            clean_thread.join()
+        clean_thread.join()
         # shut down server socket
         try:
             server_socket.shutdown(socket.SHUT_RDWR)
@@ -392,16 +375,11 @@ class CepticServer(object):
             s.send_raw(format(stream_settings["handler_max_count"], ">4"))
         # create StreamManager
         manager_uuid = str(uuid.uuid4())
-        if self.settings["use_processes"]:
-            manager_args = [s, manager_uuid, stream_settings, handle_new_connection,
-                            (self.endpointManager,)]
-            self.manager_queue.put(manager_args)
-        else:
-            manager = StreamManager.server(s, manager_uuid, stream_settings, CepticServer.handle_new_connection,
-                                           (self.endpointManager,), self.manager_closed_event)
-            self.managerDict[manager_uuid] = manager
-            manager.daemon = True
-            manager.start()
+        manager = StreamManager.server(s, manager_uuid, stream_settings, CepticServer.handle_new_connection,
+                                       (self.endpointManager,), self.manager_closed_event)
+        self.managerDict[manager_uuid] = manager
+        manager.daemon = True
+        manager.start()
 
     @staticmethod
     def handle_new_connection(stream, server_settings, endpoint_manager):
@@ -497,27 +475,6 @@ class CepticServer(object):
         Returns True if server is running
         """
         return not self.shouldStop and self.isRunning
-
-    def start_runners(self, count):
-        # create queue for managers
-        self.manager_queue = multiprocessing_Queue()
-        for n in range(count):
-            name = "Runner{}".format(n)
-            new_runner = StreamManagerRunner(self.manager_queue, name=name)
-            new_runner.daemon = True
-            new_runner.start()
-            # add runner to runnerList
-            self.runnerList.append(new_runner)
-
-    def close_all_runners(self):
-        # stop all runners
-        for runner in self.runnerList:
-            runner.stop()
-        # wait for runners to finish running
-        for runner in self.runnerList:
-            runner.join()
-        # remove all runners
-        del self.runnerList[:]
 
     def close_all_managers(self):
         keys = list(self.managerDict)

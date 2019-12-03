@@ -2,7 +2,6 @@ import json
 import socket
 import uuid
 
-from sys import version_info
 from ceptic.network import SocketCeptic
 from ceptic.common import CepticStatusCode, CepticResponse, CepticRequest, CepticCommands, CepticException
 from ceptic.common import create_command_settings, decode_unicode_hook

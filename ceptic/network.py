@@ -1,21 +1,5 @@
-import os
 import select
-import ssl
 from sys import version_info
-if version_info < (3, 0):
-    import socket
-    import copy_reg as copyreg
-    from multiprocessing.reduction import rebuild_socket, reduce_socket
-
-
-def save_ssl_context(obj):
-    return obj.__class__, (obj.protocol,)
-
-
-if version_info < (3, 0):
-    copyreg.pickle(socket.socket, reduce_socket, rebuild_socket)
-    copyreg.pickle(ssl.SSLSocket, reduce_socket, rebuild_socket)
-    copyreg.pickle(ssl.SSLContext, save_ssl_context)
 
 
 class SocketCeptic(object):

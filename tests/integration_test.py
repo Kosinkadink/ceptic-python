@@ -327,7 +327,7 @@ def test_get_client_does_not_recognize_server_certs(server_certfile_keyfile_only
         # make request to server
         headers = dict()
         with pytest.raises(CepticException):
-            response = client.connect_url("localhost:9000", "get", headers)
+            client.connect_url("localhost:9000", "get", headers)
 
 
 def test_get_not_secure(server_not_secure, client_not_secure):
@@ -362,7 +362,7 @@ def test_get_server_not_found(client_all_files):
     # make request to server
     headers = dict()
     with pytest.raises(CepticException):
-        response = client.connect_url("localhost:9000", "get", headers)
+        client.connect_url("localhost:9000", "get", headers)
 
 
 def test_get_multiple_requests_series(server_all_files, client_all_files):
@@ -411,9 +411,9 @@ def test_get_multiple_requests_parallel(server_all_files, client_all_files):
         # make request to server
         q = Queue()
 
-        def make_request_thread(q_thread, client_thread, url, command, headers, body=None):
-            response = client_thread.connect_url(url, command, headers, body)
-            q_thread.put(response)
+        def make_request_thread(q_thread, client_thread, url, command, local_headers, body=None):
+            local_response = client_thread.connect_url(url, command, local_headers, body)
+            q_thread.put(local_response)
 
         headers = dict()
         threads = []
