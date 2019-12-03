@@ -3,7 +3,6 @@ import sys
 import json
 from sys import version_info
 from time import time
-# StreamManager import located on bottom of file to allow circular import
 
 
 def create_command_settings(maxMsgLength=2048000000, maxBodyLength=2048000000):
@@ -287,7 +286,3 @@ def decode_unicode_hook(json_pairs):
             key = key.encode("utf-8")
         new_json_pairs.append((key, value))
     return dict(new_json_pairs)
-
-
-from ceptic.managers.streammanager import StreamFrame, StreamFrameGen
-from ceptic.encode import EncodeBase64

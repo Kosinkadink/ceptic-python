@@ -7,13 +7,13 @@ import copy
 import uuid
 
 from sys import version_info
-from multiprocessing import Event
+from multiprocessing import Queue as multiprocessing_Queue
 from ceptic.network import SocketCeptic
 from ceptic.common import CepticRequest, CepticResponse, CepticStatusCode, CepticException
 from ceptic.common import create_command_settings, decode_unicode_hook
 from ceptic.managers.endpointmanager import EndpointManager
 from ceptic.managers.certificatemanager import CertificateManager, CertificateManagerException, create_ssl_config
-from ceptic.managers.streammanager import StreamManager, StreamException, StreamClosedException, \
+from ceptic.managers.streammanager import StreamManager, StreamManagerRunner, StreamException, StreamClosedException, \
     StreamTotalDataSizeException, StreamFrameGen
 from ceptic.encode import EncodeGetter, UnknownEncodingException
 
@@ -23,7 +23,7 @@ def create_server_settings(port=9000, version="1.0.0",
                            frame_min_size=1024000, frame_max_size=1024000,
                            content_max_size=10240000,
                            stream_min_timeout=5, stream_timeout=5, handler_max_count=0, block_on_start=False,
-                           use_processes=False, max_parallel_count=1, request_queue_size=10, verbose=False):
+                           max_parallel_count=1, request_queue_size=10, verbose=False):
     settings = {"port": int(port),
                 "version": str(version),
                 "headers_min_size": int(headers_min_size),
@@ -35,15 +35,19 @@ def create_server_settings(port=9000, version="1.0.0",
                 "stream_timeout": int(stream_timeout),
                 "handler_max_count": int(handler_max_count),
                 "block_on_start": bool(block_on_start),
-                "use_processes": bool(use_processes),
                 "max_parallel_count": int(max_parallel_count),
                 "request_queue_size": int(request_queue_size),
                 "verbose": bool(verbose)}
+    settings["use_processes"] = settings["max_parallel_count"] > 1
     if settings["frame_min_size"] > settings["frame_max_size"]:
         settings["frame_min_size"] = settings["frame_max_size"]
     if settings["frame_min_size"] < 1000:
         raise ValueError("frame_min_size must be at least 1000; was {}".format(settings["frame_min_size"]))
     return settings
+
+
+def handle_new_connection(*args):
+    return CepticServer.handle_new_connection(*args)
 
 
 def begin_exchange(request):
@@ -72,7 +76,6 @@ def basic_server_command(stream, request, endpoint_func, endpoint_dict):
     # set request stream to local stream
     request.stream = stream
     # perform command function with appropriate params
-    response = None
     try:
         response = endpoint_func(request, **endpoint_dict)
     except Exception as e:
@@ -81,7 +84,6 @@ def basic_server_command(stream, request, endpoint_func, endpoint_dict):
     # if CepticResponse not returned, try to parse as tuple and create CepticResponse
     if not isinstance(response, CepticResponse):
         try:
-            response_tuple = ()
             if not isinstance(response, int):
                 response_tuple = tuple(response)
             else:
@@ -117,7 +119,7 @@ def basic_server_command(stream, request, endpoint_func, endpoint_dict):
         try:
             stream.sendall(StreamFrameGen(stream).from_data(response.body))
         except StreamException as e:
-            stream.send_close("SERVER STREAM EXCEPTION: {},{}".format(type(e),str(e)))
+            stream.send_close("SERVER STREAM EXCEPTION: {},{}".format(type(e), str(e)))
             if request.config_settings["verbose"]:
                 print("StreamException type ({}) raised while sending response body: {}".format(type(e), str(e)))
     # close connection
@@ -151,7 +153,6 @@ class CepticServer(object):
         self.settings = settings
         self.shouldStop = False
         self.isRunning = False
-        self.closed_manager_event = Event()
         # set up endpoint manager
         self.endpointManager = EndpointManager.server()
         # set up certificate manager
@@ -159,6 +160,11 @@ class CepticServer(object):
         self.setup_certificate_manager(certfile, keyfile, cafile, secure)
         # create StreamManager dict
         self.managerDict = {}
+        self.manager_closed_event = threading.Event()
+        self.clean_timeout = 0.5
+        # create StreamManagerRunner list for multiprocessing purposes
+        self.runnerList = []
+        self.manager_queue = None
         # initialize
         self.initialize()
 
@@ -244,9 +250,18 @@ class CepticServer(object):
             if self.settings["verbose"]:
                 print("Error while binding server_socket: {}".format(str(e)))
             self.shouldStop = True
-        # queue up to specified number of  requests
+        # queue up to specified number of requests
         server_socket.listen(self.settings["request_queue_size"])
         socket_list.append(server_socket)
+        clean_thread = None
+        # if use_processes, start up the corresponding amount of StreamManagerRunner instances
+        if self.settings["use_processes"]:
+            self.start_runners(self.settings["max_parallel_count"])
+        # otherwise, create a clean thread for managers
+        else:
+            clean_thread = threading.Thread(target=self.clean_managers)
+            clean_thread.daemon = True
+            clean_thread.start()
         self.isRunning = True
 
         while not self.shouldStop:
@@ -263,6 +278,11 @@ class CepticServer(object):
                     new_thread.start()
         # shut down managers
         self.close_all_managers()
+        # shut down runners
+        self.close_all_runners()
+        # wait for clean thread to finish
+        if not self.settings["use_processes"]:
+            clean_thread.join()
         # shut down server socket
         try:
             server_socket.shutdown(socket.SHUT_RDWR)
@@ -291,7 +311,7 @@ class CepticServer(object):
             s.close()
             return
         # wrap socket with SocketCeptic, to send length of message first
-        s = SocketCeptic(s)
+        s = SocketCeptic.wrap_socket(s)
         # get version
         client_version = s.recv_raw(16).strip()
         # get client frame_min_size
@@ -372,11 +392,16 @@ class CepticServer(object):
             s.send_raw(format(stream_settings["handler_max_count"], ">4"))
         # create StreamManager
         manager_uuid = str(uuid.uuid4())
-        manager = StreamManager.server(s, manager_uuid, stream_settings, CepticServer.handle_new_connection,
-                                       (self.endpointManager,), self.closed_manager_event)
-        self.managerDict[manager_uuid] = manager
-        manager.daemon = True
-        manager.start()
+        if self.settings["use_processes"]:
+            manager_args = [s, manager_uuid, stream_settings, handle_new_connection,
+                            (self.endpointManager,)]
+            self.manager_queue.put(manager_args)
+        else:
+            manager = StreamManager.server(s, manager_uuid, stream_settings, CepticServer.handle_new_connection,
+                                           (self.endpointManager,), self.manager_closed_event)
+            self.managerDict[manager_uuid] = manager
+            manager.daemon = True
+            manager.start()
 
     @staticmethod
     def handle_new_connection(stream, server_settings, endpoint_manager):
@@ -397,7 +422,8 @@ class CepticServer(object):
                     "command too long; should be no more than 128 characters, but was {}".format(len(request.command)))
             if len(request.endpoint) > 128:
                 errors.append(
-                    "endpoint too long; should be no more than 128 characters, but was {}".format(len(request.endpoint)))
+                    "endpoint too long; should be no more than 128 characters, but was {}".format(
+                        len(request.endpoint)))
             # try to get endpoint objects from endpointManager
             try:
                 command_func, handler, variable_dict, settings, settings_override = endpoint_manager.get_endpoint(
@@ -410,7 +436,7 @@ class CepticServer(object):
                 request.settings = settings_merged
                 # set server settings as request's config settings
                 request.config_settings = server_settings
-            except KeyError as e:
+            except KeyError:
                 errors.append("endpoint of type {} not recognized: {}".format(request.command, request.endpoint))
             # check that headers are valid/proper
             errors.extend(CepticServer.check_new_connection_headers(request, server_settings))
@@ -466,11 +492,49 @@ class CepticServer(object):
         """
         return self.shouldStop and not self.isRunning
 
+    def is_running(self):
+        """
+        Returns True if server is running
+        """
+        return not self.shouldStop and self.isRunning
+
+    def start_runners(self, count):
+        # create queue for managers
+        self.manager_queue = multiprocessing_Queue()
+        for n in range(count):
+            name = "Runner{}".format(n)
+            new_runner = StreamManagerRunner(self.manager_queue, name=name)
+            new_runner.daemon = True
+            new_runner.start()
+            # add runner to runnerList
+            self.runnerList.append(new_runner)
+
+    def close_all_runners(self):
+        # stop all runners
+        for runner in self.runnerList:
+            runner.stop()
+        # wait for runners to finish running
+        for runner in self.runnerList:
+            runner.join()
+        # remove all runners
+        del self.runnerList[:]
+
     def close_all_managers(self):
         keys = list(self.managerDict)
         for key in keys:
             self.managerDict[key].stop()
             self.remove_manager(key)
+
+    def clean_managers(self):
+        while not self.shouldStop:
+            self.manager_closed_event.clear()
+            manager_closed = self.manager_closed_event.wait(self.clean_timeout)
+            if manager_closed:
+                managers = list(self.managerDict)
+                for manager_name in managers:
+                    manager = self.managerDict.get(manager_name)
+                    if manager and manager.is_stopped():
+                        self.remove_manager(manager_name)
 
     def remove_manager(self, manager_uuid):
         """
@@ -478,5 +542,7 @@ class CepticServer(object):
         :param manager_uuid: string form of UUID
         :return: None
         """
-        if self.managerDict.get(manager_uuid):
+        try:
             self.managerDict.pop(manager_uuid)
+        except KeyError:
+            pass

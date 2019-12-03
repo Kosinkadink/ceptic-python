@@ -1,9 +1,14 @@
 import uuid
 import threading
-from multiprocessing import Pipe
+from multiprocessing import Process
+from multiprocessing import Event as multiprocessing_Event
 from time import sleep
 from sys import version_info
 from collections import deque
+if version_info < (3, 0):  # if running python 2
+    from Queue import Empty
+else:
+    from queue import Empty
 from ceptic.common import CepticException, Timer
 from ceptic.network import select_ceptic
 from ceptic.encode import EncodeGetter
@@ -58,6 +63,70 @@ class StreamTotalDataSizeException(StreamException):
     pass
 
 
+class StreamManagerRunner(Process):
+    """
+    Runs StreamManager instances in a separate process
+    """
+    def __init__(self, manager_queue, timeout=0.5, name="DefaultName"):
+        Process.__init__(self)
+        self.manager_queue = manager_queue
+        self.timeout = timeout
+        self.name = name
+        # close event
+        self.close_event = multiprocessing_Event()
+        # storing managers
+        self.managerDict = {}
+        self.manager_closed_event = multiprocessing_Event()
+
+    def run(self):
+        # start clean_thread
+        clean_thread = threading.Thread(target=self.clean_managers)
+        clean_thread.daemon = True
+        clean_thread.start()
+        # keep receiving and starting managers while not closed
+        while not self.close_event.is_set():
+            try:
+                manager_args = self.manager_queue.get(block=True, timeout=self.timeout)
+                print("RECEIVED ARGS")
+                manager_args.append(self.manager_closed_event)
+                manager = StreamManager.server(*manager_args)
+                self.managerDict[manager.name] = manager
+                manager.daemon = True
+                manager.start()
+            except Empty:
+                pass
+        # close all managers
+        self.close_all_managers()
+        # wait for clean thread to stop
+        clean_thread.join()
+
+    def clean_managers(self):
+        while not self.close_event.is_set():
+            self.close_event.clear()
+            manager_closed = self.manager_closed_event.wait(self.timeout)
+            if manager_closed:
+                managers = list(self.managerDict)
+                for manager_name in managers:
+                    manager = self.managerDict.get(manager_name)
+                    if manager and manager.is_stopped():
+                        self.remove_manager(manager_name)
+
+    def close_all_managers(self):
+        keys = list(self.managerDict)
+        for key in keys:
+            self.managerDict[key].stop()
+            self.remove_manager(key)
+
+    def remove_manager(self, manager_uuid):
+        try:
+            self.managerDict.pop(manager_uuid)
+        except KeyError:
+            pass
+
+    def stop(self):
+        self.close_event.set()
+
+
 class StreamManager(threading.Thread):
     """
     Used for managing a stream of data to and from a socket; input a socket
@@ -80,7 +149,6 @@ class StreamManager(threading.Thread):
         self.send_event = threading.Event()
         self.keep_alive_timer = Timer()
         self.isRunning = False
-        self.use_processes = False
         self.handler_count = 0
         # timeouts/delays
         self.send_event_timeout = 0.1

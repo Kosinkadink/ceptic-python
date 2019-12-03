@@ -1,20 +1,42 @@
+import os
 import select
+import ssl
 from sys import version_info
+if version_info < (3, 0):
+    import socket
+    import copy_reg as copyreg
+    from multiprocessing.reduction import rebuild_socket, reduce_socket
+
+
+def save_ssl_context(obj):
+    return obj.__class__, (obj.protocol,)
+
+
+if version_info < (3, 0):
+    copyreg.pickle(socket.socket, reduce_socket, rebuild_socket)
+    copyreg.pickle(ssl.SSLSocket, reduce_socket, rebuild_socket)
+    copyreg.pickle(ssl.SSLContext, save_ssl_context)
 
 
 class SocketCeptic(object):
-    def __init__(self, s):
-        pass
+    def __init__(self):
+        self.s = None
 
-    def __new__(cls, s):
+    def __new__(cls):
         if version_info < (3, 0):  # python2 code
             actual_class = SocketCepticPy2
         else:
             actual_class = SocketCepticPy3
         instance = super(SocketCeptic, actual_class).__new__(actual_class)
         if actual_class != cls:
-            instance.__init__(s)
+            instance.__init__()
         return instance
+
+    @classmethod
+    def wrap_socket(cls, s):
+        wrapped = SocketCeptic()
+        wrapped.s = s
+        return wrapped
 
     def send(self, msg):
         pass
@@ -44,9 +66,8 @@ class SocketCepticPy2(SocketCeptic):
     Usage: wrapped_socket = SocketCeptic(existing_socket)
     """
 
-    def __init__(self, s):
-        super(SocketCepticPy2, self).__init__(s)
-        self.s = s
+    def __init__(self):
+        SocketCeptic.__init__(self)
 
     def send(self, msg):
         """
@@ -134,9 +155,8 @@ class SocketCepticPy3(SocketCeptic):
     Usage: wrapped_socket = SocketCeptic(existing_socket)
     """
 
-    def __init__(self, s):
-        super().__init__(s)
-        self.s = s
+    def __init__(self):
+        SocketCeptic.__init__(self)
 
     def send(self, msg):
         """

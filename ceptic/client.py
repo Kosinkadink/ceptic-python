@@ -62,11 +62,10 @@ def basic_client_command(stream, request):
             response = CepticResponse(400, errors="body received is greater than reported content_length; body ignored")
         except StreamException as e:
             stream.send_close()
-            response = CepticResponse(400,
-                                      errors="StreamException type ({}) thrown while receiving response body: {}".format(
-                                          type(e),
-                                          str(e))
-                                      )
+            response = CepticResponse(
+                400,
+                errors="StreamException type ({}) thrown while receiving response body: {}".format(type(e), str(e))
+            )
     # return response
     return response
 
@@ -261,7 +260,7 @@ class CepticClient(object):
             s.close()
             raise e
         # wrap socket with SocketCeptic, to send length of message first
-        s = SocketCeptic(s)
+        s = SocketCeptic.wrap_socket(s)
         # send server relevant values
         stream_settings = {}
         # send version
