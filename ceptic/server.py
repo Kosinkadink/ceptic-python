@@ -5,12 +5,11 @@ import copy
 import uuid
 
 from ceptic.network import SocketCeptic
-from ceptic.common import CepticRequest, CepticResponse, CepticStatusCode, CepticException
-from ceptic.common import create_command_settings, decode_unicode_hook
-from ceptic.managers.endpointmanager import EndpointManager
-from ceptic.managers.certificatemanager import CertificateManager, CertificateManagerException, create_ssl_config
-from ceptic.managers.streammanager import StreamManager, StreamException, StreamClosedException, \
-    StreamTotalDataSizeException, StreamFrameGen
+from ceptic.common import CepticRequest, CepticResponse, CepticStatusCode
+from ceptic.common import create_command_settings
+from ceptic.endpointmanager import EndpointManager
+from ceptic.certificatemanager import CertificateManager, CertificateManagerException, create_ssl_config
+from ceptic.streammanager import StreamManager, StreamException, StreamTotalDataSizeException, StreamFrameGen
 from ceptic.encode import EncodeGetter, UnknownEncodingException
 
 

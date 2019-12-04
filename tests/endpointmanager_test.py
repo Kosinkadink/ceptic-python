@@ -1,7 +1,6 @@
 import pytest
-from sys import version_info
-from ceptic.managers.endpointmanager import EndpointManager, EndpointClientManager, EndpointServerManager
-from ceptic.managers.endpointmanager import EndpointManagerException
+from ceptic.endpointmanager import EndpointManager, EndpointClientManager, EndpointServerManager
+from ceptic.endpointmanager import EndpointManagerException
 from ceptic.common import create_command_settings
 
 
@@ -13,8 +12,6 @@ def helper_add_test_command_to_EndpointServerManager(manager, command_name):
                             maxMsgLength=1024,
                             maxBodyLength=2048)
                         )
-
-
 # END HELPERS
 
 

@@ -1,6 +1,6 @@
 import os
 import pytest
-from ceptic.managers.certificatemanager import CertificateManager, CertificateManagerException, create_ssl_config
+from ceptic.certificatemanager import CertificateManager, CertificateManagerException, create_ssl_config
 
 
 # FIXTURES
@@ -11,12 +11,9 @@ def locations():
         def __init__(self):
             self.test_dir = os.path.join(os.path.realpath(
                 os.path.join(os.getcwd(), os.path.dirname(__file__))))
-            self.server_certs = os.path.join(self.test_dir, "../server_certs")
-            self.client_certs = os.path.join(self.test_dir, "../client_certs")
-
+            self.server_certs = os.path.join(self.test_dir, "server_certs")
+            self.client_certs = os.path.join(self.test_dir, "client_certs")
     return _RealObject()
-
-
 # END FIXTURES
 
 

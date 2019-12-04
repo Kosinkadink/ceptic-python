@@ -3,13 +3,13 @@ import socket
 import uuid
 
 from ceptic.network import SocketCeptic
-from ceptic.common import CepticStatusCode, CepticResponse, CepticRequest, CepticCommands, CepticException
-from ceptic.common import create_command_settings, decode_unicode_hook
-from ceptic.managers.endpointmanager import EndpointManager
-from ceptic.managers.certificatemanager import CertificateManager, CertificateManagerException, create_ssl_config
-from ceptic.managers.streammanager import StreamManager, StreamFrameGen, StreamClosedException, StreamException, \
+from ceptic.common import CepticResponse, CepticRequest, CepticException
+from ceptic.common import create_command_settings
+from ceptic.endpointmanager import EndpointManager
+from ceptic.certificatemanager import CertificateManager, CertificateManagerException, create_ssl_config
+from ceptic.streammanager import StreamManager, StreamFrameGen, StreamClosedException, StreamException, \
     StreamTotalDataSizeException
-from ceptic.encode import EncodeGetter, UnknownEncodingException
+from ceptic.encode import EncodeGetter
 
 
 def create_client_settings(version="1.0.0",

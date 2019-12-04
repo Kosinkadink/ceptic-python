@@ -31,7 +31,6 @@ def locations():
             self.c_certfile = os.path.join(self.client_certs, "cert_client.pem")
             self.c_keyfile = os.path.join(self.client_certs, "key_client.pem")
             self.c_cafile = os.path.join(self.client_certs, "cert_server.pem")
-
     return _RealObject()
 
 
