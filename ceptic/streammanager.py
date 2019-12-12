@@ -78,7 +78,7 @@ class StreamManager(threading.Thread):
         self.stop_reason = ""
         self.send_event = threading.Event()
         self.keep_alive_timer = Timer()
-        self.isRunning = False
+        self.isDoneRunning = threading.Event()
         self.handler_count = 0
         # timeouts/delays
         self.send_event_timeout = 0.1
@@ -106,7 +106,6 @@ class StreamManager(threading.Thread):
         # set start time for keep alive timer
         self.keep_alive_timer.start()
         # start receive thread
-        self.isRunning = True
         self.receive_thread.start()
         # start clean thread
         self.clean_thread.start()
@@ -138,7 +137,7 @@ class StreamManager(threading.Thread):
         self.clean_thread.join()
         # close any remaining headers
         self.close_all_handlers()
-        self.isRunning = False
+        self.isDoneRunning.set()
         self.close_manager()
 
     def clean_handlers(self):
@@ -248,7 +247,10 @@ class StreamManager(threading.Thread):
         self.shouldStop.set()
 
     def is_stopped(self):
-        return self.shouldStop and not self.isRunning
+        return self.shouldStop.is_set() and self.isDoneRunning.is_set()
+
+    def wait_until_not_running(self):
+        self.isDoneRunning.wait()
 
     def close_manager(self):
         if self.is_server:

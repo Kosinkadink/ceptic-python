@@ -177,6 +177,9 @@ def test_server_add_endpoint():
         pytest.fail("Unexpected EndpointManagerException: {}".format(e))
     # endpoint info should be stored properly
     endpointMap, func, settings = manager.commandMap["get"]
+    assert isinstance(endpointMap, dict)
+    assert func is not None
+    assert settings is not None
 
 
 def test_server_add_endpoint_command_does_not_exist():

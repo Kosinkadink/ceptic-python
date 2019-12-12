@@ -38,18 +38,13 @@ def locations():
 def server_all_files(locations):
     @contextlib.contextmanager
     def _real_func(settings=None):
-        print("server _real_func setup...")
         if settings is None:
             settings = create_server_settings()
         app = CepticServer(settings, locations.s_certfile, locations.s_keyfile, locations.s_cafile)
         yield app
         # cleanup
         if not app.is_stopped():
-            print("cleaning up...")
             app.stop()
-            while not app.is_stopped():
-                sleep(0.05)
-
     return _real_func
 
 
@@ -64,9 +59,6 @@ def server_certfile_keyfile_only(locations):
         # cleanup
         if not app.is_stopped():
             app.stop()
-            while not app.is_stopped():
-                sleep(0.05)
-
     return _real_func
 
 
@@ -81,9 +73,6 @@ def server_not_secure():
         # cleanup
         if not app.is_stopped():
             app.stop()
-            while not app.is_stopped():
-                sleep(0.05)
-
     return _real_func
 
 
@@ -94,7 +83,6 @@ def client_all_files(locations):
             settings = create_client_settings()
         return CepticClient(settings, locations.c_certfile, locations.c_keyfile, locations.c_cafile,
                             check_hostname=check_hostname)
-
     return _real_func
 
 
@@ -104,7 +92,6 @@ def client_certfile_keyfile_only(locations):
         if settings is None:
             settings = create_client_settings()
         return CepticClient(settings, locations.c_certfile, locations.c_keyfile, check_hostname=check_hostname)
-
     return _real_func
 
 
@@ -114,7 +101,6 @@ def client_cafile_only(locations):
         if settings is None:
             settings = create_client_settings()
         return CepticClient(settings, cafile=locations.c_cafile, check_hostname=check_hostname)
-
     return _real_func
 
 
@@ -124,7 +110,6 @@ def client_no_files(locations):
         if settings is None:
             settings = create_client_settings()
         return CepticClient(settings, check_hostname=check_hostname)
-
     return _real_func
 
 
@@ -134,10 +119,7 @@ def client_not_secure(locations):
         if settings is None:
             settings = create_client_settings()
         return CepticClient(settings, check_hostname=check_hostname, secure=False)
-
     return _real_func
-
-
 # END FIXTURES
 
 
@@ -540,6 +522,4 @@ def teardown_function(function):
     if function.server is not None:
         if not function.server.is_stopped():
             function.server.stop()
-            while not function.server.is_stopped():
-                sleep(0.05)
 # done setup/teardown for each function

@@ -1,6 +1,7 @@
 import json
 import socket
 import uuid
+import threading
 
 from ceptic.network import SocketCeptic
 from ceptic.common import CepticResponse, CepticRequest, CepticException
@@ -73,8 +74,8 @@ class CepticClient(object):
 
     def __init__(self, settings, certfile=None, keyfile=None, cafile=None, check_hostname=True, secure=True):
         self.settings = settings
-        self.shouldStop = False
-        self.isRunning = False
+        self.shouldStop = threading.Event()
+        self.isDoneRunning = threading.Event()
         # set up endpoint manager
         self.endpointManager = EndpointManager.client()
         # set up certificate manager
@@ -369,15 +370,22 @@ class CepticClient(object):
         Properly begin to stop client; tells client StreamManagers to stop
         :return: None
         """
-        self.shouldStop = True
+        self.shouldStop.set()
         self.close_all_managers()
-        self.isRunning = False
+        self.isDoneRunning.set()
+
+    def wait_until_not_running(self):
+        """
+        Blocks until client fully closes
+        :return: None
+        """
+        self.isDoneRunning.wait()
 
     def is_stopped(self):
         """
         Returns True if client is not running any managers
         """
-        return self.shouldStop and not self.isRunning
+        return self.shouldStop.is_set() and self.isDoneRunning.is_set()
 
     def close_all_managers(self):
         """
@@ -385,9 +393,16 @@ class CepticClient(object):
         :return: None
         """
         keys = list(self.managerDict)
+        # stop all managers
         for key in keys:
             try:
                 self.managerDict[key].stop()
+            except KeyError:
+                pass
+        # confirm all managers are closed and remove them
+        for key in keys:
+            try:
+                self.managerDict[key].wait_until_not_running()
             except KeyError:
                 pass
             self.remove_manager(key)

@@ -39,10 +39,6 @@ def create_server_settings(port=9000, version="1.0.0",
     return settings
 
 
-def handle_new_connection(*args):
-    return CepticServer.handle_new_connection(*args)
-
-
 def begin_exchange(request):
     """
     Sends CepticResponse to client to start continuous exchange with server
@@ -144,8 +140,8 @@ class CepticServer(object):
 
     def __init__(self, settings, certfile=None, keyfile=None, cafile=None, secure=True):
         self.settings = settings
-        self.shouldStop = False
-        self.isRunning = False
+        self.shouldStop = threading.Event()
+        self.isDoneRunning = threading.Event()
         # set up endpoint manager
         self.endpointManager = EndpointManager.server()
         # set up certificate manager
@@ -239,7 +235,7 @@ class CepticServer(object):
         except Exception as e:
             if self.settings["verbose"]:
                 print("Error while binding server_socket: {}".format(str(e)))
-            self.shouldStop = True
+            self.shouldStop.set()
         # queue up to specified number of requests
         server_socket.listen(self.settings["request_queue_size"])
         socket_list.append(server_socket)
@@ -247,9 +243,8 @@ class CepticServer(object):
         clean_thread = threading.Thread(target=self.clean_managers)
         clean_thread.daemon = True
         clean_thread.start()
-        self.isRunning = True
 
-        while not self.shouldStop:
+        while not self.shouldStop.is_set():
             ready_to_read, ready_to_write, in_error = select.select(socket_list, [], [], delay_time)
             for sock in ready_to_read:
                 # establish a connection
@@ -272,8 +267,7 @@ class CepticServer(object):
             if self.settings["verbose"]:
                 print("Error while shutting down server_socket: {}".format(str(e)))
         server_socket.close()
-        self.stop()
-        self.isRunning = False
+        self.isDoneRunning.set()
 
     def handle_new_socket(self, s, addr):
         """
@@ -456,36 +450,63 @@ class CepticServer(object):
 
         return decorator_route
 
-    def stop(self):
+    def stop(self, blocking=True):
         """
-        Properly begin to stop server; tells server loop to stop, performs clean_processes()
+        Properly begin to stop server; tells server loop to stop
+        If blocking is True, waits until server is done closing
+        :param blocking: boolean for if should block until server fully closes
         :return: None
         """
-        self.shouldStop = True
+        self.shouldStop.set()
+        if blocking and not self.is_stopped():
+            self.wait_until_not_running()
+
+    def wait_until_not_running(self):
+        """
+        Blocks until server fully closes
+        :return: None
+        """
+        self.isDoneRunning.wait()
 
     def is_stopped(self):
         """
         Returns True if server is not running
         """
-        return self.shouldStop and not self.isRunning
+        return self.shouldStop.is_set() and self.isDoneRunning.is_set()
 
     def is_running(self):
         """
         Returns True if server is running
         """
-        return not self.shouldStop and self.isRunning
+        return not self.shouldStop.is_set() and not self.isDoneRunning.is_set()
 
     def close_all_managers(self):
+        """
+        Stops and removes all managers
+        :return: None
+        """
         keys = list(self.managerDict)
         for key in keys:
-            self.managerDict[key].stop()
+            try:
+                self.managerDict[key].stop()
+            except KeyError:
+                pass
+        for key in keys:
+            try:
+                self.managerDict[key].wait_until_not_running()
+            except KeyError:
+                pass
             self.remove_manager(key)
 
     def clean_managers(self):
-        while not self.shouldStop:
-            self.manager_closed_event.clear()
+        """
+        Loop for cleaning closed or timed out managers until server is signalled to stop
+        :return: None
+        """
+        while not self.shouldStop.is_set():
             manager_closed = self.manager_closed_event.wait(self.clean_timeout)
             if manager_closed:
+                self.manager_closed_event.clear()
                 managers = list(self.managerDict)
                 for manager_name in managers:
                     manager = self.managerDict.get(manager_name)
