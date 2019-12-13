@@ -65,12 +65,8 @@ class CepticRequest(object):
         if not self.headers:
             self.headers = {}
         if self.body:
-            if len(self.body) < 500:
-                self.content_length = 1000
-            else:
-                self.content_length = len(body)*2
+            self.content_length = len(body)
         self.stream = None
-        # TODO: Add properties to easily access common headers (and return None if not present)
 
     @property
     def content_length(self):
@@ -112,6 +108,16 @@ class CepticRequest(object):
     def authorization(self, value):
         self.headers["Authorization"] = value
 
+    @property
+    def files(self):
+        if self.headers:
+            return self.headers.get("Files")
+        return None
+
+    @files.setter
+    def files(self, value):
+        self.headers["Files"] = value
+
     def get_data(self):
         json_headers = json.dumps(self.headers)
         return "{}\r\n{}\r\n{}".format(self.command, self.endpoint, json_headers)
@@ -132,11 +138,7 @@ class CepticResponse(object):
         if not self.headers:
             self.headers = {}
         if self.body:
-            if self.body:
-                if len(self.body) < 500:
-                    self.content_length = 500
-                else:
-                    self.content_length = len(body) * 2
+            self.content_length = len(body)
         if errors:
             self.errors = errors
 
@@ -179,6 +181,16 @@ class CepticResponse(object):
     @exchange.setter
     def exchange(self, value):
         self.headers["Exchange"] = value
+
+    @property
+    def files(self):
+        if self.headers:
+            return self.headers.get("Files")
+        return None
+
+    @files.setter
+    def files(self, value):
+        self.headers["Files"] = value
 
     def is_success(self):
         return CepticStatusCode.is_success(self.status)

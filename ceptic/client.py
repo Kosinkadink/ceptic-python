@@ -47,7 +47,7 @@ def basic_client_command(stream, request):
             return CepticResponse(400, errors="StreamException: {}".format(str(e)))
     # get response
     try:
-        response_data = stream.get_full_data()
+        response_data = stream.get_full_data(max_length=stream.frame_size)
     except StreamClosedException as e:
         return CepticResponse(400, errors=str(e))
     response = CepticResponse.from_data(response_data)
@@ -345,7 +345,7 @@ class CepticClient(object):
         stream.send_data(request.get_data(), is_first_header=True)
         # wait for response
         try:
-            response_data = stream.get_full_data()
+            response_data = stream.get_full_data(max_length=stream.frame_size)
         except StreamClosedException as e:
             return CepticResponse(400, errors=str(e))
         response = CepticResponse.from_data(response_data)

@@ -409,7 +409,6 @@ class StreamHandler(object):
         """
         if timeout is None:
             timeout = self.settings["stream_timeout"]
-        # full_data = ""
         frames = []
         total_length = 0
         frame_generator = self.gen_next_frame(timeout)
@@ -443,7 +442,6 @@ class StreamHandler(object):
             timeout = self.settings["stream_timeout"]
         frames = []
         total_data = 0
-        # done = False
         frame_generator = self.gen_next_frame(timeout)
         for frame in frame_generator:
             if not frame:
