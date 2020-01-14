@@ -224,7 +224,6 @@ class StreamManager(threading.Thread):
             stream.stop()
             self.streams.pop(stream_id)
             self.handler_count -= 1  # subtract from handler_count
-            # print("handler with stream_id {} has been closed for manager {}".format(stream_id, self.name))
 
     def close_all_handlers(self):
         # close all handlers currently stored in streams dict
@@ -238,7 +237,6 @@ class StreamManager(threading.Thread):
     def check_for_timeout(self):
         # if timeout past stream_timeout setting, stop manager
         if self.keep_alive_timer.get_time() > self.settings["stream_timeout"]:
-            # print("manager {} timed out".format(self.name))
             self.stop("manager timed out")
 
     def stop(self, reason=""):
@@ -321,11 +319,15 @@ class StreamHandler(object):
     def is_timed_out(self):
         # if timeout past stream_timeout setting, stop handler
         if self.keep_alive_timer.get_time() > self.settings["stream_timeout"]:
-            # print("handler with stream_id {} has timed out".format(self.stream_id))
             return True
         return False
 
     def send_close(self, data=""):
+        """
+        Send a close frame with optional data content and stop handler
+        :param data: optional string containing reason for closing handler
+        :return: None
+        """
         try:
             self.send(StreamFrame.create_close(self.stream_id, data=data))
         except StreamHandlerStoppedException:
@@ -345,14 +347,42 @@ class StreamHandler(object):
         self.send_event.set()
 
     def sendall(self, frames):
+        """
+        Send all frames
+        :param frames: iterable collection of frames
+        :return: None
+        """
         for frame in frames:
             self.send(frame)
 
     def send_data(self, data, is_first_header=False):
+        """
+        Send all data in data parameter
+        :param data:
+        :param is_first_header:
+        :return:
+        """
         self.sendall(self.stream_frame_gen.from_data(data, is_first_header))
 
     def send_file(self, file_object):
+        """
+        Send all data in file_object
+        :param file_object: readable file instance
+        :return: None
+        """
         self.sendall(self.stream_frame_gen.from_file(file_object))
+
+    def get_file(self, file_object, timeout=None, max_length=None):
+        """
+        Get all data into a file
+        :param file_object: writable file instance
+        :param timeout: optional timeout
+        :param max_length: optional max length of file to receive
+        :return: None
+        """
+        gen = self.gen_full_data(timeout=timeout, max_length=max_length)
+        for data in gen:
+            file_object.write(data)
 
     def add_to_read(self, frame):
         """
@@ -406,6 +436,9 @@ class StreamHandler(object):
     def get_full_data(self, timeout=None, max_length=None):
         """
         Returns combined data (if applicable) for continued frames until an end frame is encountered
+        :param timeout: optional timeout time (uses stream_timeout setting by default)
+        :param max_length: optional max length; allows throwing exception if exceeds limit
+        :return: string instance
         """
         if timeout is None:
             timeout = self.settings["stream_timeout"]
@@ -468,10 +501,33 @@ class StreamHandler(object):
             yield frame.data
 
     def gen_full_data(self, timeout=None, max_length=None):
+        """
+        Generator for getting data frame-by-frame until an end frame is encountered
+        :param timeout: optional timeout time (uses stream_timeout setting by default)
+        :param max_length: optional max length; allows throwing exception if exceeds limit
+        :return: string instance
+        """
+        if timeout is None:
+            timeout = self.settings["stream_timeout"]
+        total_length = 0
+        frame_generator = self.gen_next_frame(timeout)
+        for frame in frame_generator:
+            if not frame:
+                break
+            # add data
+            yield frame.get_data()
+            total_length += len(frame.get_data())
+            if max_length and total_length > max_length:  # len(full_data) > max_length:
+                raise StreamTotalDataSizeException("total data received has surpassed max_length of {}".format(
+                    max_length))
+            if frame.is_last():
+                break
+
+    def gen_next_full_data(self, timeout=None, max_length=None):
         while True:
             yield self.get_full_data(timeout=timeout, max_length=max_length)
 
-    def gen_full_frames(self, timeout=None, max_length=None):
+    def gen_next_full_frames(self, timeout=None, max_length=None):
         while True:
             yield self.get_full_frames(timeout=timeout, max_length=max_length)
 
@@ -526,7 +582,7 @@ class StreamFrameGen(object):
     def __init__(self, stream):
         self.stream = stream
         self._frame_size = 0
-        self.frame_size = self.stream.frame_size//2
+        self.frame_size = self.stream.frame_size // 2
 
     @property
     def frame_size(self):

@@ -9,7 +9,7 @@ from ceptic.common import CepticRequest, CepticResponse, CepticStatusCode
 from ceptic.common import create_command_settings
 from ceptic.endpointmanager import EndpointManager
 from ceptic.certificatemanager import CertificateManager, CertificateManagerException, create_ssl_config
-from ceptic.streammanager import StreamManager, StreamException, StreamTotalDataSizeException, StreamFrameGen
+from ceptic.streammanager import StreamManager, StreamException, StreamTotalDataSizeException
 from ceptic.encode import EncodeGetter, UnknownEncodingException
 
 
@@ -106,7 +106,7 @@ def basic_server_command(stream, request, endpoint_func, endpoint_dict):
     if response.content_length:
         # TODO: Add file transfer functionality
         try:
-            stream.sendall(StreamFrameGen(stream).from_data(response.body))
+            stream.send_data(response.body)
         except StreamException as e:
             stream.send_close("SERVER STREAM EXCEPTION: {},{}".format(type(e), str(e)))
             if request.config_settings["verbose"]:

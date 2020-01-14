@@ -8,8 +8,7 @@ from ceptic.common import CepticResponse, CepticRequest, CepticException
 from ceptic.common import create_command_settings
 from ceptic.endpointmanager import EndpointManager
 from ceptic.certificatemanager import CertificateManager, CertificateManagerException, create_ssl_config
-from ceptic.streammanager import StreamManager, StreamFrameGen, StreamClosedException, StreamException, \
-    StreamTotalDataSizeException
+from ceptic.streammanager import StreamManager, StreamClosedException, StreamException, StreamTotalDataSizeException
 from ceptic.encode import EncodeGetter
 
 
@@ -39,7 +38,7 @@ def basic_client_command(stream, request):
     if request.content_length:
         # TODO: Add file transfer functionality
         try:
-            stream.sendall(StreamFrameGen(stream).from_data(request.body))
+            stream.send_data(request.body)
         except StreamClosedException:
             return CepticResponse(400, errors="stream closed while sending body")
         except StreamException as e:
