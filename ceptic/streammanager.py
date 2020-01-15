@@ -279,6 +279,13 @@ class StreamHandler(object):
         # deques to store frames
         self.frames_to_send = deque()
         self.frames_to_read = deque()
+        # buffer sizes
+        self.send_buffer_size = 0
+        self.read_buffer_size = 0
+        # events for awaiting decrease of buffer size
+        self.send_buffer_ready_or_stop = threading.Event()
+        self.read_buffer_ready_or_stop = threading.Event()
+        self.buffer_wait_timeout = 0.1
         # keep_alive timer
         self.keep_alive_timer = Timer()
         self.keep_alive_timer.start()
@@ -301,6 +308,14 @@ class StreamHandler(object):
         return self.settings["stream_timeout"]
 
     @property
+    def send_buffer_limit(self):
+        return self.settings["send_buffer_size"]
+
+    @property
+    def read_buffer_limit(self):
+        return self.settings["read_buffer_size"]
+
+    @property
     def encoder(self):
         return self._encoder
 
@@ -309,6 +324,8 @@ class StreamHandler(object):
 
     def stop(self):
         self.read_or_stop_event.set()
+        self.send_buffer_ready_or_stop.set()
+        self.read_buffer_ready_or_stop.set()
         self.shouldStop.set()
 
     def is_stopped(self):
@@ -321,6 +338,12 @@ class StreamHandler(object):
         if self.keep_alive_timer.get_time() > self.settings["stream_timeout"]:
             return True
         return False
+
+    def is_send_buffer_full(self):
+        return self.send_buffer_size > self.send_buffer_limit
+
+    def is_read_buffer_full(self):
+        return self.read_buffer_size > self.read_buffer_limit
 
     def send_close(self, data=""):
         """
@@ -343,6 +366,15 @@ class StreamHandler(object):
             raise StreamHandlerStoppedException("handler is stopped; cannot send frames through a stopped handler")
         self.keep_alive_timer.update()
         frame.data = self.encoder.encode(frame.get_data().encode())
+        # check if enough room in buffer
+        self.send_buffer_size += frame.get_size()
+        if self.is_send_buffer_full():
+            # wait until buffer is decreased enough to fit new frame
+            self.send_buffer_ready_or_stop.clear()
+            while self.is_send_buffer_full() and not self.is_stopped():
+                ready = self.send_buffer_ready_or_stop.wait(self.buffer_wait_timeout)
+                if ready:
+                    break
         self.frames_to_send.append(frame)
         self.send_event.set()
 
@@ -391,6 +423,15 @@ class StreamHandler(object):
         :return: None
         """
         self.keep_alive_timer.update()
+        # check if enough room in buffer
+        self.read_buffer_size += frame.get_size()
+        if self.is_read_buffer_full():
+            # wait until buffer is decreased enough to fit new frame
+            self.read_buffer_ready_or_stop.clear()
+            while self.is_read_buffer_full() and not self.is_stopped():
+                ready = self.read_buffer_ready_or_stop.wait(self.buffer_wait_timeout)
+                if ready:
+                    break
         self.frames_to_read.append(frame)
         self.read_or_stop_event.set()
 
@@ -552,28 +593,47 @@ class StreamHandler(object):
         Return latest frame to send; pops frame id from frames_to_send deque
         :return: latest StreamFrame to send
         """
+        frame = None
         try:
-            return self.frames_to_send.popleft()
+            frame = self.frames_to_send.popleft()
+            return frame
         except IndexError:
             return None
+        finally:
+            # if frame was taken from deque, decrement deque size
+            if frame:
+                self.send_buffer_size -= frame.get_size()
+                # flag that send buffer is not full, if currently awaiting event
+                if not self.send_buffer_ready_or_stop.is_set() and not self.is_send_buffer_full():
+                    self.send_buffer_ready_or_stop.set()
 
     def get_ready_to_read(self, expect_frame=False):
         """
         Return latest frame to read; pops frame id from frames_to_read deque
         :return: latest StreamFrame to read
         """
+        frame = None
         try:
-            return self.frames_to_read.popleft()
+            frame = self.frames_to_read.popleft()
+            return frame
         except IndexError:
             # workaround for weird Python2 issue, where deque may return positive length before item is readable
             if version_info < (3, 0) and expect_frame:
                 # item should be readable shortly, so keep trying to get it
                 while True:
                     try:
-                        return self.frames_to_read.popleft()
+                        frame = self.frames_to_read.popleft()
+                        return frame
                     except IndexError:
                         pass
             return None
+        finally:
+            # if frame was taken from queue, decrement deque size
+            if frame:
+                self.read_buffer_size -= frame.get_size()
+                # flag that read buffer is not full, if currently awaiting event
+                if not self.read_buffer_ready_or_stop.is_set() and not self.is_read_buffer_full():
+                    self.read_buffer_ready_or_stop.set()
 
 
 class StreamFrameGen(object):
@@ -688,6 +748,13 @@ class StreamFrame(object):
         Getter for data
         """
         return self.data
+
+    def get_size(self):
+        """
+        Size getter - streamId, type, info, data
+        :return: int size of total bytes
+        """
+        return 38 + len(self.data)
 
     def set_to_header(self):
         """

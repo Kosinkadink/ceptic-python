@@ -17,7 +17,9 @@ def create_server_settings(port=9000, version="1.0.0",
                            headers_min_size=1024000, headers_max_size=1024000,
                            frame_min_size=1024000, frame_max_size=1024000,
                            content_max_size=10240000,
-                           stream_min_timeout=5, stream_timeout=5, handler_max_count=0, block_on_start=False,
+                           stream_min_timeout=5, stream_timeout=5,
+                           send_buffer_size=102400000, read_buffer_size=102400000,
+                           handler_max_count=0, block_on_start=False,
                            request_queue_size=10, verbose=False):
     settings = {"port": int(port),
                 "version": str(version),
@@ -28,6 +30,8 @@ def create_server_settings(port=9000, version="1.0.0",
                 "content_max_size": int(content_max_size),
                 "stream_min_timeout": int(stream_min_timeout),
                 "stream_timeout": int(stream_timeout),
+                "send_buffer_size": int(send_buffer_size),
+                "read_buffer_size": int(read_buffer_size),
                 "handler_max_count": int(handler_max_count),
                 "block_on_start": bool(block_on_start),
                 "request_queue_size": int(request_queue_size),
@@ -36,6 +40,12 @@ def create_server_settings(port=9000, version="1.0.0",
         settings["frame_min_size"] = settings["frame_max_size"]
     if settings["frame_min_size"] < 1000:
         raise ValueError("frame_min_size must be at least 1000; was {}".format(settings["frame_min_size"]))
+    if settings["send_buffer_size"] < settings["frame_max_size"] + 38 or \
+            settings["read_buffer_size"] < settings["frame_max_size"] + 38:
+        raise ValueError("send and read buffer size must be greater than "
+                         "frame_max_size+28 ({}); were {} and {}".format(settings["frame_max_size"] + 38,
+                                                                         settings["send_buffer_size"],
+                                                                         settings["read_buffer_size"]))
     return settings
 
 
@@ -303,7 +313,9 @@ class CepticServer(object):
         # get client stream timeout
         client_stream_timeout_str = s.recv_raw(4).strip()
         # see if values are acceptable
-        stream_settings = {"verbose": self.settings["verbose"]}
+        stream_settings = {"verbose": self.settings["verbose"],
+                           "send_buffer_size": self.settings["send_buffer_size"],
+                           "read_buffer_size": self.settings["read_buffer_size"]}
         errors = []
         # convert received values to int
         client_frame_min_size = None
