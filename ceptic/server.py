@@ -6,28 +6,28 @@ import uuid
 
 from ceptic.network import SocketCeptic
 from ceptic.common import CepticRequest, CepticResponse, CepticStatusCode
-from ceptic.common import create_command_settings
+from ceptic.common import command_settings
 from ceptic.endpointmanager import EndpointManager
 from ceptic.certificatemanager import CertificateManager, CertificateManagerException, create_ssl_config
 from ceptic.streammanager import StreamManager, StreamException, StreamTotalDataSizeException
 from ceptic.encode import EncodeGetter, UnknownEncodingException
 
 
-def create_server_settings(port=9000, version="1.0.0",
-                           headers_min_size=1024000, headers_max_size=1024000,
-                           frame_min_size=1024000, frame_max_size=1024000,
-                           content_max_size=10240000,
-                           stream_min_timeout=5, stream_timeout=5,
-                           send_buffer_size=102400000, read_buffer_size=102400000,
-                           handler_max_count=0, block_on_start=False,
-                           request_queue_size=10, verbose=False):
+def server_settings(port=9000, version="1.0.0",
+                    headers_min_size=1024000, headers_max_size=1024000,
+                    frame_min_size=1024000, frame_max_size=1024000,
+                    body_max=102400000,
+                    stream_min_timeout=5, stream_timeout=5,
+                    send_buffer_size=102400000, read_buffer_size=102400000,
+                    handler_max_count=0, block_on_start=False,
+                    request_queue_size=10, verbose=False):
     settings = {"port": int(port),
                 "version": str(version),
                 "headers_min_size": int(headers_min_size),
                 "headers_max_size": int(headers_max_size),
                 "frame_min_size": int(frame_min_size),
                 "frame_max_size": int(frame_max_size),
-                "content_max_size": int(content_max_size),
+                "body_max": int(body_max),
                 "stream_min_timeout": int(stream_min_timeout),
                 "stream_timeout": int(stream_timeout),
                 "send_buffer_size": int(send_buffer_size),
@@ -181,25 +181,25 @@ class CepticServer(object):
         self.endpointManager.add_command(
             "get",
             basic_server_command,
-            create_command_settings(maxMsgLength=2048000000, maxBodyLength=2048000000)
+            command_settings(body_max=self.settings["body_max"])
         )
         # add post command
         self.endpointManager.add_command(
             "post",
             basic_server_command,
-            create_command_settings(maxMsgLength=2048000000, maxBodyLength=2048000000)
+            command_settings(body_max=self.settings["body_max"])
         )
         # add update command
         self.endpointManager.add_command(
             "update",
             basic_server_command,
-            create_command_settings(maxMsgLength=2048000000, maxBodyLength=2048000000)
+            command_settings(body_max=self.settings["body_max"])
         )
         # add delete command
         self.endpointManager.add_command(
             "delete",
             basic_server_command,
-            create_command_settings(maxMsgLength=2048000000, maxBodyLength=2048000000)
+            command_settings(body_max=self.settings["body_max"])
         )
 
     def start(self):
@@ -411,7 +411,7 @@ class CepticServer(object):
             try:
                 command_func, handler, variable_dict, settings, settings_override = endpoint_manager.get_endpoint(
                     request.command, request.endpoint)
-                # merge settings
+                # merge settings; endpoint settings take precedence over command settings
                 settings_merged = copy.deepcopy(settings)
                 if settings_override is not None:
                     settings_merged.update(settings_override)
@@ -422,7 +422,7 @@ class CepticServer(object):
             except KeyError:
                 errors.append("endpoint of type {} not recognized: {}".format(request.command, request.endpoint))
             # check that headers are valid/proper
-            errors.extend(CepticServer.check_new_connection_headers(request, server_settings))
+            errors.extend(CepticServer.check_new_connection_headers(request))
             # if no errors, send positive response and continue
         if not errors:
             stream.send_data(CepticResponse(200).get_data())
@@ -436,14 +436,15 @@ class CepticServer(object):
             stream.send_close()
 
     @staticmethod
-    def check_new_connection_headers(request, server_settings):
+    def check_new_connection_headers(request):
         errors = []
-        # check that Content-Length header (if present) is of allowed length
-        if "Content-Length" in request.headers:
+        # check that content_length is of allowed length
+        if request.content_length:
             # if content length is longer than set max body length, invalid
-            if request.headers["Content-Length"] > request.settings["maxBodyLength"]:
-                errors.append("Content-Length exceeds server's allowed max body length of {}".format(
-                    request.settings["maxBodyLength"]))
+            if request.content_length > request.max_content_length:
+                errors.append("Content-Length ({}) exceeds server's allowed max body length of {}".format(
+                    request.content_length,
+                    request.max_content_length))
         # check that encoding is recognized and valid
         if request.encoding:
             valid, error = EncodeGetter.check(request.encoding)

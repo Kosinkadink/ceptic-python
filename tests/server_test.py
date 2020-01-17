@@ -1,6 +1,6 @@
 import os
 import pytest
-from ceptic.server import CepticServer, create_server_settings, basic_server_command
+from ceptic.server import CepticServer, server_settings, basic_server_command
 
 
 # FIXTURES
@@ -23,29 +23,29 @@ def locations():
 
 # TESTS:
 def test_server_creation_with_certs(locations):
-    server_settings = create_server_settings()
-    app = CepticServer(server_settings, locations.certfile, locations.keyfile, locations.cafile)
+    _server_settings = server_settings()
+    app = CepticServer(_server_settings, locations.certfile, locations.keyfile, locations.cafile)
     app.start()
     app.stop()
 
 
 def test_server_creation_with_certs_no_verify(locations):
-    server_settings = create_server_settings()
-    app = CepticServer(server_settings, locations.certfile, locations.keyfile)
+    _server_settings = server_settings()
+    app = CepticServer(_server_settings, locations.certfile, locations.keyfile)
     app.start()
     app.stop()
 
 
 def test_server_creation_with_no_certs(locations):
-    server_settings = create_server_settings()
-    app = CepticServer(server_settings)
+    _server_settings = server_settings()
+    app = CepticServer(_server_settings)
     app.start()
     app.stop()
 
 
 def test_add_route(locations):
-    server_settings = create_server_settings()
-    app = CepticServer(server_settings)
+    _server_settings = server_settings()
+    app = CepticServer(_server_settings)
 
     # create a route
     @app.route("/", "get")
@@ -61,8 +61,8 @@ def test_add_route(locations):
 
 
 def test_add_route_with_variable(locations):
-    server_settings = create_server_settings()
-    app = CepticServer(server_settings)
+    _server_settings = server_settings()
+    app = CepticServer(_server_settings)
 
     # create a route
     @app.route("/testing/<test_variable>", "get")

@@ -116,14 +116,20 @@ class StreamManager(threading.Thread):
                 self.send_event.clear()
                 streams = list(self.streams)
                 for stream_id in streams:
-                    stream = self.get_handler(stream_id)
+                    try:
+                        stream = self.get_handler(stream_id)
                     # if stream not found, must have been deleted; move on to next one
-                    if not stream:
+                    except KeyError:
                         continue
                     # while a frame is ready to be sent, send it
                     while stream.is_ready_to_send() and not self.shouldStop.is_set():
                         frame_to_send = stream.get_ready_to_send()
-                        frame_to_send.send(self.s)
+                        # if a ConnectionResetError occurs, stop manager
+                        try:
+                            frame_to_send.send(self.s)
+                        except ConnectionResetError as e:
+                            self.stop(reason="{},{}".format(type(e), str(e)))
+                            break
                         # if sent a close frame, close handler
                         if frame_to_send.is_close():
                             self.streams_to_remove.append(stream_id)
@@ -145,9 +151,10 @@ class StreamManager(threading.Thread):
             streams = list(self.streams)
             # check if stream has timed out
             for stream_id in streams:
-                stream = self.get_handler(stream_id)
+                try:
+                    stream = self.get_handler(stream_id)
                 # if stream not found, must have been deleted; move on to next one
-                if not stream:
+                except KeyError:
                     continue
                 if stream.is_timed_out():
                     self.streams_to_remove.append(stream_id)
@@ -166,7 +173,7 @@ class StreamManager(threading.Thread):
                 # get frame
                 try:
                     received_frame = StreamFrame.from_socket(sock, self.settings["frame_max_size"])
-                except (EOFError, StreamFrameSizeException) as e:
+                except (EOFError, ConnectionResetError, StreamFrameSizeException) as e:
                     # stop stream if socket unexpectedly closes or sender does not respect allotted max frame size
                     self.stop(reason="{},{}".format(type(e), str(e)))
                     continue
@@ -203,7 +210,10 @@ class StreamManager(threading.Thread):
                     conn_thread.start()
                     # close handler if over limit
                     if should_decline:
-                        self.get_handler(stream_id).send_close()
+                        try:
+                            self.get_handler(stream_id).send_close()
+                        except KeyError:
+                            continue
                 else:
                     try:
                         self.get_handler(received_frame.get_stream_id()).add_to_read(received_frame)
@@ -232,7 +242,8 @@ class StreamManager(threading.Thread):
             self.close_handler(stream_id)
 
     def get_handler(self, stream_id):
-        return self.streams.get(stream_id)
+        # throws KeyError if stream not found
+        return self.streams[stream_id]
 
     def check_for_timeout(self):
         # if timeout past stream_timeout setting, stop manager

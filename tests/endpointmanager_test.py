@@ -1,16 +1,14 @@
 import pytest
 from ceptic.endpointmanager import EndpointManager, EndpointClientManager, EndpointServerManager
 from ceptic.endpointmanager import EndpointManagerException
-from ceptic.common import create_command_settings
+from ceptic.common import command_settings
 
 
 # HELPERS:
 def helper_add_test_command_to_EndpointServerManager(manager, command_name):
     manager.add_command(command="get",
                         command_func=command_name,
-                        settings=create_command_settings(
-                            maxMsgLength=1024,
-                            maxBodyLength=2048)
+                        settings=command_settings(body_max=1024)
                         )
 # END HELPERS
 
@@ -31,9 +29,7 @@ def test_client_add_command():
 
     manager.add_command(command="get",
                         func=command_func,
-                        settings=create_command_settings(
-                            maxMsgLength=1024,
-                            maxBodyLength=2048)
+                        settings=command_settings(body_max=1024)
                         )
 
 
@@ -45,14 +41,11 @@ def test_client_get_command():
 
     manager.add_command(command="get",
                         func=command_func,
-                        settings=create_command_settings(
-                            maxMsgLength=1024,
-                            maxBodyLength=2048)
+                        settings=command_settings(body_max=1024)
                         )
     func, settings = manager.get_command("get")
     assert func is command_func
-    assert settings["maxMsgLength"] == 1024
-    assert settings["maxBodyLength"] == 2048
+    assert settings["body_max"] == 1024
 
 
 def test_client_get_command_does_not_exist():
@@ -70,9 +63,7 @@ def test_client_remove_command():
 
     manager.add_command(command="get",
                         func=command_func,
-                        settings=create_command_settings(
-                            maxMsgLength=1024,
-                            maxBodyLength=2048)
+                        settings=command_settings(body_max=1024)
                         )
     # make sure get command works
     try:
@@ -102,9 +93,7 @@ def test_server_add_command():
 
     manager.add_command(command="get",
                         command_func=command_func,
-                        settings=create_command_settings(
-                            maxMsgLength=1024,
-                            maxBodyLength=2048)
+                        settings=command_settings(body_max=1024)
                         )
 
 
@@ -116,16 +105,13 @@ def test_server_get_command():
 
     manager.add_command(command="get",
                         command_func=command_func,
-                        settings=create_command_settings(
-                            maxMsgLength=1024,
-                            maxBodyLength=2048)
+                        settings=command_settings(body_max=1024)
                         )
     endpointMap, func, settings = manager.get_command("get")
     assert isinstance(endpointMap, dict)
     assert len(endpointMap) == 0
     assert func is command_func
-    assert settings["maxMsgLength"] == 1024
-    assert settings["maxBodyLength"] == 2048
+    assert settings["body_max"] == 1024
 
 
 def test_server_get_command_does_not_exist():
@@ -143,9 +129,7 @@ def test_server_remove_command():
 
     manager.add_command(command="get",
                         command_func=command_func,
-                        settings=create_command_settings(
-                            maxMsgLength=1024,
-                            maxBodyLength=2048)
+                        settings=command_settings(body_max=1024)
                         )
     # make sure get command works
     try:

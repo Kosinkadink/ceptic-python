@@ -4,12 +4,11 @@ from sys import version_info
 from time import time
 
 
-def create_command_settings(maxMsgLength=2048000000, maxBodyLength=2048000000):
+def command_settings(body_max=102400000):
     """
     Generates dictionary with command settings
     """
-    settings = {"maxMsgLength": int(maxMsgLength),
-                "maxBodyLength": int(maxBodyLength)}
+    settings = {"body_max": int(body_max)}
     return settings
 
 
@@ -79,6 +78,12 @@ class CepticRequest(object):
         self.headers["Content-Length"] = length
 
     @property
+    def max_content_length(self):
+        if self.settings:
+            return self.settings["body_max"]
+        return 0
+
+    @property
     def content_type(self):
         if self.headers:
             return self.headers.get("Content-Type")
@@ -134,6 +139,7 @@ class CepticResponse(object):
         self.status = int(status)
         self.headers = headers
         self.body = body
+        self.settings = None
         self.stream = stream
         if not self.headers:
             self.headers = {}
@@ -161,6 +167,12 @@ class CepticResponse(object):
     @content_length.setter
     def content_length(self, length):
         self.headers["Content-Length"] = length
+
+    @property
+    def max_content_length(self):
+        if self.settings:
+            return self.settings["body_max"]
+        return 0
 
     @property
     def content_type(self):

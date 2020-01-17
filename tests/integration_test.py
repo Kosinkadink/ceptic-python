@@ -10,8 +10,8 @@ if version_info < (3, 0):  # if running python 2
 else:
     from queue import Queue
 
-from ceptic.server import CepticServer, create_server_settings
-from ceptic.client import CepticClient, create_client_settings
+from ceptic.server import CepticServer, server_settings
+from ceptic.client import CepticClient, client_settings
 from ceptic.common import CepticResponse, CepticException
 
 
@@ -39,7 +39,7 @@ def server_all_files(locations):
     @contextlib.contextmanager
     def _real_func(settings=None):
         if settings is None:
-            settings = create_server_settings()
+            settings = server_settings()
         app = CepticServer(settings, locations.s_certfile, locations.s_keyfile, locations.s_cafile)
         yield app
         # cleanup
@@ -53,7 +53,7 @@ def server_certfile_keyfile_only(locations):
     @contextlib.contextmanager
     def _real_func(settings=None):
         if settings is None:
-            settings = create_server_settings()
+            settings = server_settings()
         app = CepticServer(settings, locations.s_certfile, locations.s_keyfile)
         yield app
         # cleanup
@@ -67,7 +67,7 @@ def server_not_secure():
     @contextlib.contextmanager
     def _real_func(settings=None):
         if settings is None:
-            settings = create_server_settings()
+            settings = server_settings()
         app = CepticServer(settings, secure=False)
         yield app
         # cleanup
@@ -80,7 +80,7 @@ def server_not_secure():
 def client_all_files(locations):
     def _real_func(settings=None, check_hostname=False):
         if settings is None:
-            settings = create_client_settings()
+            settings = client_settings()
         return CepticClient(settings, locations.c_certfile, locations.c_keyfile, locations.c_cafile,
                             check_hostname=check_hostname)
     return _real_func
@@ -90,7 +90,7 @@ def client_all_files(locations):
 def client_certfile_keyfile_only(locations):
     def _real_func(settings=None, check_hostname=False):
         if settings is None:
-            settings = create_client_settings()
+            settings = client_settings()
         return CepticClient(settings, locations.c_certfile, locations.c_keyfile, check_hostname=check_hostname)
     return _real_func
 
@@ -99,7 +99,7 @@ def client_certfile_keyfile_only(locations):
 def client_cafile_only(locations):
     def _real_func(settings=None, check_hostname=False):
         if settings is None:
-            settings = create_client_settings()
+            settings = client_settings()
         return CepticClient(settings, cafile=locations.c_cafile, check_hostname=check_hostname)
     return _real_func
 
@@ -108,7 +108,7 @@ def client_cafile_only(locations):
 def client_no_files(locations):
     def _real_func(settings=None, check_hostname=False):
         if settings is None:
-            settings = create_client_settings()
+            settings = client_settings()
         return CepticClient(settings, check_hostname=check_hostname)
     return _real_func
 
@@ -117,7 +117,7 @@ def client_no_files(locations):
 def client_not_secure(locations):
     def _real_func(settings=None, check_hostname=False):
         if settings is None:
-            settings = create_client_settings()
+            settings = client_settings()
         return CepticClient(settings, check_hostname=check_hostname, secure=False)
     return _real_func
 # END FIXTURES
@@ -127,7 +127,7 @@ def client_not_secure(locations):
 def test_get(server_all_files, client_all_files):
     _here = test_get
     # init server and client
-    with server_all_files(settings=create_server_settings(verbose=True)) as app:
+    with server_all_files(settings=server_settings(verbose=True)) as app:
         _here.server = app
         client = client_all_files()
 
@@ -152,7 +152,7 @@ def test_get(server_all_files, client_all_files):
 def test_get_echo_body(server_all_files, client_all_files):
     _here = test_get
     # init server and client
-    with server_all_files(settings=create_server_settings(verbose=True)) as app:
+    with server_all_files(settings=server_settings(verbose=True)) as app:
         _here.server = app
         client = client_all_files()
 
@@ -180,9 +180,9 @@ def test_get_echo_body_multiple_frames(server_all_files, client_all_files):
     _here = test_get
     # init server and client; frame_max_size is set below size of body to force
     # multiple frames to be sent to transfer full data
-    with server_all_files(settings=create_server_settings(verbose=True, frame_max_size=1000)) as app:
+    with server_all_files(settings=server_settings(verbose=True, frame_max_size=1000)) as app:
         _here.server = app
-        client = client_all_files(settings=create_client_settings(frame_max_size=1000))
+        client = client_all_files(settings=client_settings(frame_max_size=1000))
 
         # add test get command
         @app.route("/", "get")
@@ -206,7 +206,7 @@ def test_get_echo_body_multiple_frames(server_all_files, client_all_files):
 def test_get_echo_body_encoding(server_all_files, client_all_files):
     _here = test_get
     # init server and client
-    with server_all_files(settings=create_server_settings(verbose=True)) as app:
+    with server_all_files(settings=server_settings(verbose=True)) as app:
         _here.server = app
         client = client_all_files()
 
@@ -238,7 +238,7 @@ def test_get_echo_body_encoding(server_all_files, client_all_files):
 def test_get_echo_body_encoding_invalid(server_all_files, client_all_files):
     _here = test_get
     # init server and client
-    with server_all_files(settings=create_server_settings(verbose=True)) as app:
+    with server_all_files(settings=server_settings(verbose=True)) as app:
         _here.server = app
         client = client_all_files()
 
@@ -266,7 +266,7 @@ def test_get_echo_body_encoding_invalid(server_all_files, client_all_files):
 def test_get_only_server_related_files(server_certfile_keyfile_only, client_cafile_only):
     _here = test_get_only_server_related_files
     # init server and client
-    with server_certfile_keyfile_only(settings=create_server_settings(verbose=True)) as app:
+    with server_certfile_keyfile_only(settings=server_settings(verbose=True)) as app:
         _here.server = app
         client = client_cafile_only()
 
@@ -291,7 +291,7 @@ def test_get_only_server_related_files(server_certfile_keyfile_only, client_cafi
 def test_get_client_does_not_recognize_server_certs(server_certfile_keyfile_only, client_no_files):
     _here = test_get_client_does_not_recognize_server_certs
     # init server and client
-    with server_certfile_keyfile_only(settings=create_server_settings(verbose=True)) as app:
+    with server_certfile_keyfile_only(settings=server_settings(verbose=True)) as app:
         _here.server = app
         client = client_no_files()
 
@@ -314,7 +314,7 @@ def test_get_client_does_not_recognize_server_certs(server_certfile_keyfile_only
 def test_get_not_secure(server_not_secure, client_not_secure):
     _here = test_get_not_secure
     # init server and client
-    with server_not_secure(settings=create_server_settings(verbose=True)) as app:
+    with server_not_secure(settings=server_settings(verbose=True)) as app:
         _here.server = app
         client = client_not_secure()
 
@@ -349,7 +349,7 @@ def test_get_server_not_found(client_all_files):
 def test_get_multiple_requests_series(server_all_files, client_all_files):
     _here = test_get_multiple_requests_series
     # init server and client
-    with server_all_files(settings=create_server_settings(verbose=True)) as app:
+    with server_all_files(settings=server_settings(verbose=True)) as app:
         _here.server = app
         client = client_all_files()
 
@@ -376,9 +376,9 @@ def test_get_multiple_requests_parallel(server_all_files, client_all_files):
     _here = test_get_multiple_requests_parallel
     # init server and client
     with server_all_files(
-            settings=create_server_settings(verbose=False, request_queue_size=100, stream_timeout=5)) as app:
+            settings=server_settings(verbose=False, request_queue_size=100, stream_timeout=5)) as app:
         _here.server = app
-        client = client_all_files(settings=create_client_settings(stream_timeout=5))
+        client = client_all_files(settings=client_settings(stream_timeout=5))
 
         # add test get command
         @app.route("/", "get")
@@ -424,7 +424,7 @@ def test_get_multiple_requests_parallel(server_all_files, client_all_files):
 def test_post(server_all_files, client_all_files):
     _here = test_post
     # init server and client
-    with server_all_files(settings=create_server_settings(verbose=True)) as app:
+    with server_all_files(settings=server_settings(verbose=True)) as app:
         _here.server = app
         client = client_all_files()
 
@@ -450,7 +450,7 @@ def test_post(server_all_files, client_all_files):
 def test_update(server_all_files, client_all_files):
     _here = test_update
     # init server and client
-    with server_all_files(settings=create_server_settings(verbose=True)) as app:
+    with server_all_files(settings=server_settings(verbose=True)) as app:
         _here.server = app
         client = client_all_files()
 
@@ -476,7 +476,7 @@ def test_update(server_all_files, client_all_files):
 def test_delete(server_all_files, client_all_files):
     _here = test_delete
     # init server and client
-    with server_all_files(settings=create_server_settings(verbose=True)) as app:
+    with server_all_files(settings=server_settings(verbose=True)) as app:
         _here.server = app
         client = client_all_files()
 

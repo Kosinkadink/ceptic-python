@@ -1,29 +1,30 @@
 import json
 import socket
+import copy
 import uuid
 import threading
 
 from ceptic.network import SocketCeptic
 from ceptic.common import CepticResponse, CepticRequest, CepticException
-from ceptic.common import create_command_settings
+from ceptic.common import command_settings
 from ceptic.endpointmanager import EndpointManager
 from ceptic.certificatemanager import CertificateManager, CertificateManagerException, create_ssl_config
 from ceptic.streammanager import StreamManager, StreamClosedException, StreamException, StreamTotalDataSizeException
 from ceptic.encode import EncodeGetter
 
 
-def create_client_settings(version="1.0.0",
-                           headers_min_size=1024000, headers_max_size=1024000,
-                           frame_min_size=1024000, frame_max_size=1024000,
-                           content_max_size=10240000,
-                           stream_min_timeout=1, stream_timeout=5,
-                           send_buffer_size=102400000, read_buffer_size=102400000):
+def client_settings(version="1.0.0",
+                    headers_min_size=1024000, headers_max_size=1024000,
+                    frame_min_size=1024000, frame_max_size=1024000,
+                    body_max=102400000,
+                    stream_min_timeout=1, stream_timeout=5,
+                    send_buffer_size=102400000, read_buffer_size=102400000):
     settings = {"version": str(version),
                 "headers_min_size": int(headers_min_size),
                 "headers_max_size": int(headers_max_size),
                 "frame_min_size": int(frame_min_size),
                 "frame_max_size": int(frame_max_size),
-                "content_max_size": int(content_max_size),
+                "body_max": int(body_max),
                 "stream_min_timeout": int(stream_min_timeout),
                 "stream_timeout": int(stream_timeout),
                 "send_buffer_size": int(send_buffer_size),
@@ -60,9 +61,17 @@ def basic_client_command(stream, request):
         return CepticResponse(400, errors=str(e))
     response = CepticResponse.from_data(response_data)
     response.stream = stream
+    response.settings = request.settings
     # if content length header present, receive response body
     if response.content_length:
         # TODO: Add file transfer functionality
+        # check that content length is within limit
+        if response.content_length > response.max_content_length:
+            error_msg = "response content_length ({}) is longer than client allows ({})".format(
+                response.content_length,
+                response.max_content_length)
+            stream.send_close(error_msg)
+            return CepticResponse(400, errors=error_msg)
         try:
             response.body = stream.get_full_data(max_length=response.content_length)
         except StreamTotalDataSizeException:
@@ -106,25 +115,25 @@ class CepticClient(object):
         self.endpointManager.add_command(
             "get",
             basic_client_command,
-            create_command_settings(maxMsgLength=2048000000, maxBodyLength=2048000000)
+            command_settings(body_max=self.settings["body_max"])
         )
         # add post command
         self.endpointManager.add_command(
             "post",
             basic_client_command,
-            create_command_settings(maxMsgLength=2048000000, maxBodyLength=2048000000)
+            command_settings(body_max=self.settings["body_max"])
         )
         # add update command
         self.endpointManager.add_command(
             "update",
             basic_client_command,
-            create_command_settings(maxMsgLength=2048000000, maxBodyLength=2048000000)
+            command_settings(body_max=self.settings["body_max"])
         )
         # add delete command
         self.endpointManager.add_command(
             "delete",
             basic_client_command,
-            create_command_settings(maxMsgLength=2048000000, maxBodyLength=2048000000)
+            command_settings(body_max=self.settings["body_max"])
         )
 
     def verify_request(self, request):
@@ -157,7 +166,8 @@ class CepticClient(object):
             if not valid:
                 raise ValueError("encoding header not valid; {}".format(error))
 
-    def connect_ip(self, host, port, command, endpoint, headers, body=None, force_new_stream=False, request=None):
+    def connect_ip(self, host, port, command, endpoint, headers, body=None, settings=None, force_new_stream=False,
+                   request=None):
         """
         Connect to ceptic server at given ip
         :param host: string of ip address (ipv4)
@@ -166,6 +176,7 @@ class CepticClient(object):
         :param endpoint: string endpoint value
         :param headers: dict containing headers
         :param body: optional parameter containing body of request
+        :param settings: optional dict parameter (should be created using command_settings)
         :param force_new_stream: optional boolean (default False) to guarantee new StreamManager creation
         :param request: optional request object to substitute for other parameters
         :return: CepticResponse instance
@@ -174,7 +185,8 @@ class CepticClient(object):
         try:
             # create request if one not passed in
             if not request:
-                request = CepticRequest(command=command, endpoint=endpoint, headers=headers, body=body)
+                request = CepticRequest(command=command, endpoint=endpoint, headers=headers, body=body,
+                                        settings=settings)
             self.verify_request(request)
         except ValueError as e:
             raise CepticException(e)
@@ -206,19 +218,20 @@ class CepticClient(object):
         handler = manager.get_handler(manager.create_handler())
         return self.connect_protocol_client(handler, request)
 
-    def connect_url(self, url, command, headers=None, body=None, force_new_stream=False):
+    def connect_url(self, url, command, headers=None, body=None, settings=None, force_new_stream=False):
         """
         Connect to ceptic server at given url
         :param url: string in format of ip[:port]/endpoint
         :param command: string command type of request
         :param headers: dict containing headers
         :param body: optional parameter containing body of request
+        :param settings: optional dict parameter (should be created using command_settings)
         :param force_new_stream: optional boolean (default False) to guarantee new StreamManager creation
         :return: CepticResponse instance
         """
         try:
             host, port, endpoint = self.get_details_from_url(url)
-            return self.connect_ip(host, port, command, endpoint, headers, body, force_new_stream)
+            return self.connect_ip(host, port, command, endpoint, headers, body, settings, force_new_stream)
         except ValueError as e:
             raise e
         except IndexError as e:
@@ -362,8 +375,12 @@ class CepticClient(object):
         if response.is_success():
             # get command_func and settings for command
             command_func, settings = self.endpointManager.get_command(request.command)
-            # set request settings
-            request.settings = settings
+            # merge settings; request settings take precedence over command settings
+            settings_merged = copy.deepcopy(settings)
+            if request.settings is not None:
+                settings_merged.update(request.settings)
+            # set request settings to merged settings
+            request.settings = settings_merged
             # set stream compression, based on request header
             stream.set_encode(request.encoding)
             # perform command and get back response

@@ -1,6 +1,6 @@
 import os
 import pytest
-from ceptic.client import CepticClient, create_client_settings
+from ceptic.client import CepticClient, client_settings
 
 
 # FIXTURES
@@ -23,16 +23,16 @@ def locations():
 
 # TESTS:
 def test_client_creation_with_all_files(locations):
-    client_settings = create_client_settings()
-    CepticClient(client_settings, locations.certfile, locations.keyfile, locations.cafile)
+    _client_settings = client_settings()
+    CepticClient(_client_settings, locations.certfile, locations.keyfile, locations.cafile)
 
 
 def test_client_creation_with_certfile_keyfile_only(locations):
-    client_settings = create_client_settings()
-    CepticClient(client_settings, locations.certfile, locations.keyfile)
+    _client_settings = client_settings()
+    CepticClient(_client_settings, locations.certfile, locations.keyfile)
 
 
 def test_client_creation_no_files_use_system_certs(locations):
-    client_settings = create_client_settings()
-    CepticClient(client_settings)
+    _client_settings = client_settings()
+    CepticClient(_client_settings)
 # END TESTS
