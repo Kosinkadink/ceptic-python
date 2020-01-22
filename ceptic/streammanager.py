@@ -8,16 +8,9 @@ from ceptic.network import select_ceptic
 from ceptic.encode import EncodeGetter
 
 
-class StreamManagerException(CepticException):
+class StreamException(CepticException):
     """
-    General StreamManager-related exception, inherits from CepticException
-    """
-    pass
-
-
-class StreamException(StreamManagerException):
-    """
-    General Stream Exception, inherits from StreamManagerException
+    General Stream Exception, inherits from CepticException
     """
     pass
 
