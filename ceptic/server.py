@@ -187,26 +187,22 @@ class CepticServer(object):
         # set up config
         self.certificateManager.generate_context_tls()
         # add get command
-        self.endpointManager.add_command(
-            "get",
-            basic_server_command,
-            command_settings(body_max=self.settings["body_max"])
-        )
+        self.add_command("get")
         # add post command
-        self.endpointManager.add_command(
-            "post",
-            basic_server_command,
-            command_settings(body_max=self.settings["body_max"])
-        )
+        self.add_command("post")
         # add update command
-        self.endpointManager.add_command(
-            "update",
-            basic_server_command,
-            command_settings(body_max=self.settings["body_max"])
-        )
+        self.add_command("update")
         # add delete command
+        self.add_command("delete")
+
+    def add_command(self, command):
+        """
+        Add command name to endpoint manager; registers as a basic_client_command
+        :param command: string command name
+        :return: None
+        """
         self.endpointManager.add_command(
-            "delete",
+            str(command),
             basic_server_command,
             command_settings(body_max=self.settings["body_max"])
         )
