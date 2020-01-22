@@ -268,7 +268,11 @@ class CepticServer(object):
                     # enable socket blocking
                     s.setblocking(True)
                     # s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-                    new_thread = threading.Thread(target=self.handle_new_socket, args=(s, addr))
+                    new_thread = threading.Thread(
+                        target=self.handle_new_socket,
+                        args=(s, addr, self.settings, self.endpointManager, self.certificateManager,
+                              self.manager_closed_event, self.managerDict)
+                        )
                     new_thread.daemon = True
                     new_thread.start()
         # shut down managers
@@ -284,20 +288,26 @@ class CepticServer(object):
         server_socket.close()
         self.isDoneRunning.set()
 
-    def handle_new_socket(self, s, addr):
+    @staticmethod
+    def handle_new_socket(s, addr, settings, endpoint_manager, certificate_manager, manager_closed_event, manager_dict):
         """
         Handles a particular request, to be executed by another thread of process to not block main server loop
         :param s: basic socket instance
         :param addr: socket address
+        :param settings:
+        :param endpoint_manager:
+        :param certificate_manager:
+        :param manager_closed_event:
+        :param manager_dict:
         :return: None
         """
-        if self.settings["verbose"]:
+        if settings["verbose"]:
             print("Got a connection from {}".format(addr))
         # wrap socket with TLS, handshaking happens automatically
         try:
-            s = self.certificateManager.wrap_socket(s)
+            s = certificate_manager.wrap_socket(s)
         except CertificateManagerException as e:
-            if self.settings["verbose"]:
+            if settings["verbose"]:
                 print("CertificateManagerException caught, connection terminated: {}".format(str(e)))
             s.close()
             return
@@ -318,9 +328,9 @@ class CepticServer(object):
         # get client stream timeout
         client_stream_timeout_str = s.recv_raw(4).strip()
         # see if values are acceptable
-        stream_settings = {"verbose": self.settings["verbose"],
-                           "send_buffer_size": self.settings["send_buffer_size"],
-                           "read_buffer_size": self.settings["read_buffer_size"]}
+        stream_settings = {"verbose": settings["verbose"],
+                           "send_buffer_size": settings["send_buffer_size"],
+                           "read_buffer_size": settings["read_buffer_size"]}
         errors = []
         # convert received values to int
         client_frame_min_size = None
@@ -341,7 +351,7 @@ class CepticServer(object):
         if not errors:
             # check if server's frame size is acceptable
             error, value = check_if_setting_bounded(client_frame_min_size, client_frame_max_size,
-                                                    self.settings["frame_min_size"], self.settings["frame_max_size"],
+                                                    settings["frame_min_size"], settings["frame_max_size"],
                                                     "frame size")
             if error:
                 errors.append(error)
@@ -349,8 +359,8 @@ class CepticServer(object):
                 stream_settings["frame_max_size"] = value
             # check if server's header size is acceptable
             error, value = check_if_setting_bounded(client_headers_min_size, client_headers_max_size,
-                                                    self.settings["headers_min_size"],
-                                                    self.settings["headers_max_size"],
+                                                    settings["headers_min_size"],
+                                                    settings["headers_max_size"],
                                                     "headers size")
             if error:
                 errors.append(error)
@@ -358,8 +368,8 @@ class CepticServer(object):
                 stream_settings["headers_max_size"] = value
             # check if server's timeout is acceptable
             error, value = check_if_setting_bounded(client_stream_min_timeout, client_stream_timeout,
-                                                    self.settings["stream_min_timeout"],
-                                                    self.settings["stream_timeout"],
+                                                    settings["stream_min_timeout"],
+                                                    settings["stream_timeout"],
                                                     "stream timeout")
             if error:
                 errors.append(error)
@@ -371,13 +381,13 @@ class CepticServer(object):
             s.send_raw("n")
             error_string = str(errors)[:1024]
             s.sendall(error_string)
-            if self.settings["verbose"]:
+            if settings["verbose"]:
                 print("client not compatible with server settings, connection terminated")
             s.close()
             return
         # otherwise send positive response along with decided values
         else:
-            stream_settings["handler_max_count"] = self.settings["handler_max_count"]
+            stream_settings["handler_max_count"] = settings["handler_max_count"]
             s.send_raw("y")
             s.send_raw(format(stream_settings["frame_max_size"], ">16"))
             s.send_raw(format(stream_settings["headers_max_size"], ">16"))
@@ -386,10 +396,11 @@ class CepticServer(object):
         # create StreamManager
         manager_uuid = str(uuid.uuid4())
         manager = StreamManager.server(s, manager_uuid, stream_settings, CepticServer.handle_new_connection,
-                                       (self.endpointManager,), self.manager_closed_event)
-        self.managerDict[manager_uuid] = manager
+                                       (endpoint_manager,), manager_closed_event)
+        manager_dict[manager_uuid] = manager
         manager.daemon = True
         manager.start()
+        print(manager_dict)
 
     @staticmethod
     def handle_new_connection(stream, local_settings, endpoint_manager):
