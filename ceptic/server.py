@@ -392,7 +392,7 @@ class CepticServer(object):
         manager.start()
 
     @staticmethod
-    def handle_new_connection(stream, server_settings, endpoint_manager):
+    def handle_new_connection(stream, local_settings, endpoint_manager):
         # store errors in request
         errors = []
         # get request from request data
@@ -423,7 +423,7 @@ class CepticServer(object):
                 # set request settings to merged settings
                 request.settings = settings_merged
                 # set server settings as request's config settings
-                request.config_settings = server_settings
+                request.config_settings = local_settings
             except KeyError:
                 errors.append("endpoint of type {} not recognized: {}".format(request.command, request.endpoint))
             # check that headers are valid/proper
