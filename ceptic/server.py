@@ -464,12 +464,22 @@ class CepticServer(object):
         :param command: string Ceptic command name (get, post, update, delete)
         :param settings: optional dict generate by command_settings
         """
-
         def decorator_route(func):
-            self.endpointManager.add_endpoint(command, endpoint, func, settings)
+            self.add_route(endpoint, command, func, settings)
             return func
 
         return decorator_route
+
+    def add_route(self, endpoint, command, func, settings=None):
+        """
+        Non-decorator func for adding endpoints to server instance
+        :param endpoint: string url for route to be added as an endpoint
+        :param command: string Ceptic command name (get, post, update, delete)
+        :param func: endpoint function
+        :param settings: optional dict generate by command_settings
+        :return:
+        """
+        self.endpointManager.add_endpoint(command, endpoint, func, settings)
 
     def stop(self, blocking=True):
         """

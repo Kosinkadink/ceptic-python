@@ -8,6 +8,12 @@ from ceptic.network import select_ceptic
 from ceptic.encode import EncodeGetter
 
 
+# for python 2, bind socket.error to ConnectionResetError to avoid NameError
+if version_info < (3, 0):
+    from socket import error as socket_error
+    ConnectionResetError = socket_error
+
+
 class StreamException(CepticException):
     """
     General Stream Exception, inherits from CepticException
@@ -504,9 +510,10 @@ class StreamHandler(object):
         # decompress data
         if version_info < (3, 0):  # Python2 code
             full_data = "".join(frames)
+            return full_data
         else:  # Python3 code
             full_data = bytes().join(frames)
-        return full_data.decode()
+            return full_data.decode()
 
     def get_full_header_data(self, timeout=None):
         # length should be no more than allowed header size and max 128 command, 128 endpoint, and 2 \r\n (4 bytes)
