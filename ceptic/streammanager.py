@@ -4,8 +4,14 @@ from time import sleep
 from sys import version_info
 from collections import deque
 from ceptic.common import CepticException, Timer
-from ceptic.network import select_ceptic
+from ceptic.network import select_ceptic, SocketCepticException
 from ceptic.encode import EncodeGetter
+
+
+# for python 2, bind socket.error to ConnectionResetError to avoid NameError
+if version_info < (3, 0):
+    from socket import error as socket_error
+    ConnectionResetError = socket_error
 
 
 class StreamException(CepticException):
@@ -117,10 +123,10 @@ class StreamManager(threading.Thread):
                     # while a frame is ready to be sent, send it
                     while stream.is_ready_to_send() and not self.shouldStop.is_set():
                         frame_to_send = stream.get_ready_to_send()
-                        # if a ConnectionResetError occurs, stop manager
+                        # if a SocketCepticException occurs, stop manager
                         try:
                             frame_to_send.send(self.s)
-                        except ConnectionResetError as e:
+                        except SocketCepticException as e:
                             self.stop(reason="{},{}".format(type(e), str(e)))
                             break
                         # if sent a close frame, close handler
@@ -166,7 +172,7 @@ class StreamManager(threading.Thread):
                 # get frame
                 try:
                     received_frame = StreamFrame.from_socket(sock, self.settings["frame_max_size"])
-                except (EOFError, ConnectionResetError, StreamFrameSizeException) as e:
+                except (SocketCepticException, StreamFrameSizeException) as e:
                     # stop stream if socket unexpectedly closes or sender does not respect allotted max frame size
                     self.stop(reason="{},{}".format(type(e), str(e)))
                     continue
@@ -504,9 +510,10 @@ class StreamHandler(object):
         # decompress data
         if version_info < (3, 0):  # Python2 code
             full_data = "".join(frames)
+            return full_data
         else:  # Python3 code
             full_data = bytes().join(frames)
-        return full_data.decode()
+            return full_data.decode()
 
     def get_full_header_data(self, timeout=None):
         # length should be no more than allowed header size and max 128 command, 128 endpoint, and 2 \r\n (4 bytes)
