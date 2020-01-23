@@ -1,14 +1,25 @@
 import select
+import ssl
 from sys import version_info
+if version_info < (3, 0):
+    import copy_reg as copyreg
+else:
+    import copyreg
+
+
+def save_ssl_context(obj):
+    return obj.__class__, (obj.protocol,)
+
+
+copyreg.pickle(ssl.SSLContext, save_ssl_context)
 
 
 if version_info < (3, 0):
     # Python 2
     import socket
-    import copy_reg
     from multiprocessing.reduction import rebuild_socket, reduce_socket
     # add pickle support for socket objects
-    copy_reg.pickle(socket.socket, reduce_socket, rebuild_socket)
+    copyreg.pickle(socket.socket, reduce_socket, rebuild_socket)
 
     class SocketCeptic(object):
         """
