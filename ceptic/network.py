@@ -4,6 +4,12 @@ from sys import version_info
 
 if version_info < (3, 0):
     # Python 2
+    import socket
+    import copy_reg
+    from multiprocessing.reduction import rebuild_socket, reduce_socket
+    # add pickle support for socket objects
+    copy_reg.pickle(socket.socket, reduce_socket, rebuild_socket)
+
     class SocketCeptic(object):
         """
         Wrapper for normal or ssl socket; adds necessary CEPtic functionality to sending and receiving.

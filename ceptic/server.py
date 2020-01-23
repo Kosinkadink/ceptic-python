@@ -4,6 +4,18 @@ import threading
 import copy
 import uuid
 
+from functools import wraps
+# multiprocessing-related imports
+from sys import version_info
+from multiprocessing import Process
+from multiprocessing import Event as MP_Event
+from multiprocessing import Queue as MP_Queue
+
+if version_info < (3, 0):  # if running python 2
+    from Queue import Empty
+else:
+    from queue import Empty
+
 from ceptic.network import SocketCeptic
 from ceptic.common import CepticRequest, CepticResponse, CepticStatusCode
 from ceptic.common import command_settings
@@ -20,7 +32,7 @@ def server_settings(port=9000, version="1.0.0",
                     stream_min_timeout=5, stream_timeout=5,
                     send_buffer_size=102400000, read_buffer_size=102400000,
                     handler_max_count=0, block_on_start=False,
-                    request_queue_size=10, verbose=False):
+                    request_queue_size=10, max_parallel_count=1, verbose=False):
     settings = {"port": int(port),
                 "version": str(version),
                 "headers_min_size": int(headers_min_size),
@@ -35,6 +47,7 @@ def server_settings(port=9000, version="1.0.0",
                 "handler_max_count": int(handler_max_count),
                 "block_on_start": bool(block_on_start),
                 "request_queue_size": int(request_queue_size),
+                "max_parallel_count": int(max_parallel_count),
                 "verbose": bool(verbose)}
     if settings["frame_min_size"] > settings["frame_max_size"]:
         settings["frame_min_size"] = settings["frame_max_size"]
@@ -46,6 +59,10 @@ def server_settings(port=9000, version="1.0.0",
                          "frame_max_size+28 ({}); were {} and {}".format(settings["frame_max_size"] + 38,
                                                                          settings["send_buffer_size"],
                                                                          settings["read_buffer_size"]))
+    if settings["max_parallel_count"] > 1:
+        settings["use_processes"] = True
+    else:
+        settings["use_processes"] = False
     return settings
 
 
@@ -170,6 +187,9 @@ class CepticServer(object):
         self.managerDict = {}
         self.manager_closed_event = threading.Event()
         self.clean_timeout = 0.5
+        # runner list and socket queue for multiprocessing
+        self.runnerList = []
+        self.socket_queue = None
         # initialize
         self.initialize()
 
@@ -254,10 +274,15 @@ class CepticServer(object):
         # queue up to specified number of requests
         server_socket.listen(self.settings["request_queue_size"])
         socket_list.append(server_socket)
-        # start clean thread
-        clean_thread = threading.Thread(target=self.clean_managers)
-        clean_thread.daemon = True
-        clean_thread.start()
+        clean_thread = None
+        # if use_processes, start up corresponding amount of runners
+        if self.settings["use_processes"]:
+            self.start_runners(self.settings["max_parallel_count"])
+        # else create a clean thread for managers
+        else:
+            clean_thread = threading.Thread(target=self.clean_managers)
+            clean_thread.daemon = True
+            clean_thread.start()
 
         while not self.shouldStop.is_set():
             ready_to_read, ready_to_write, in_error = select.select(socket_list, [], [], delay_time)
@@ -268,17 +293,25 @@ class CepticServer(object):
                     # enable socket blocking
                     s.setblocking(True)
                     # s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-                    new_thread = threading.Thread(
-                        target=self.handle_new_socket,
-                        args=(s, addr, self.settings, self.endpointManager, self.certificateManager,
-                              self.manager_closed_event, self.managerDict)
+                    if self.settings["use_processes"]:
+                        self.socket_queue.put([s, addr])
+                    else:
+                        new_thread = threading.Thread(
+                            target=self.handle_new_socket,
+                            args=(s, addr, self.settings, self.endpointManager, self.certificateManager,
+                                  self.manager_closed_event, self.managerDict)
                         )
-                    new_thread.daemon = True
-                    new_thread.start()
+                        new_thread.daemon = True
+                        new_thread.start()
         # shut down managers
         self.close_all_managers()
-        # wait for clean thread to finish
-        clean_thread.join()
+        # clean appropriate resources based on multiprocessing support
+        if self.settings["use_processes"]:
+            # close all runners
+            self.close_all_runners()
+        else:
+            # wait for clean thread to finish
+            clean_thread.join()
         # shut down server socket
         try:
             server_socket.shutdown(socket.SHUT_RDWR)
@@ -400,7 +433,6 @@ class CepticServer(object):
         manager_dict[manager_uuid] = manager
         manager.daemon = True
         manager.start()
-        print(manager_dict)
 
     @staticmethod
     def handle_new_connection(stream, local_settings, endpoint_manager):
@@ -475,7 +507,6 @@ class CepticServer(object):
         :param command: string Ceptic command name (get, post, update, delete)
         :param settings: optional dict generate by command_settings
         """
-
         def decorator_route(func):
             self.endpointManager.add_endpoint(command, endpoint, func, settings)
             return func
@@ -555,3 +586,113 @@ class CepticServer(object):
             self.managerDict.pop(manager_uuid)
         except KeyError:
             pass
+
+    def start_runners(self, count):
+        self.socket_queue = MP_Queue()
+        for n in range(count):
+            name = "Runner{}".format(n)
+            new_runner = HandleNewSocketRunner(self.socket_queue, self.settings, self.endpointManager,
+                                               self.certificateManager, self.clean_timeout, name)
+            new_runner.daemon = True
+            new_runner.start()
+            # add runner to runnerList
+            self.runnerList.append(new_runner)
+
+    def close_all_runners(self):
+        # stop all runners
+        for runner in self.runnerList:
+            runner.stop()
+        # wait for runners to finish running
+        for runner in self.runnerList:
+            runner.join()
+        # remove all runners
+        del self.runnerList[:]
+
+
+class HandleNewSocketRunner(Process):
+    """
+    Handles sockets and corresponding managers in a separate process
+    """
+
+    def __init__(self, socket_queue, settings, endpoint_manager, certificate_manager, timeout=0.5, name="DefaultName"):
+        Process.__init__(self)
+        self.socket_queue = socket_queue
+        self.settings = settings
+        self.endpoint_manager = endpoint_manager
+        self.certificate_manager = certificate_manager
+        self.timeout = timeout
+        self.name = name
+        # close event
+        self.shouldStop = MP_Event()
+        # manager storage
+        self.managerDict = {}
+        self.manager_closed_event = MP_Event()
+
+    def run(self):
+        # start clean thread
+        clean_thread = threading.Thread(target=self.clean_managers)
+        clean_thread.daemon = True
+        clean_thread.start()
+        # keep receiving and handling sockets while not stopped
+        while not self.shouldStop.is_set():
+            try:
+                handle_args = self.socket_queue.get(block=True, timeout=self.timeout)
+                # add arguments necessary for handle_new_socket
+                handle_args.extend([self.settings, self.endpoint_manager, self.certificate_manager,
+                                   self.manager_closed_event, self.managerDict])
+                new_handle_call = threading.Thread(target=CepticServer.handle_new_socket, args=handle_args)
+                new_handle_call.daemon = True
+                new_handle_call.start()
+            except Empty:
+                pass
+        # close all managers
+        self.close_all_managers()
+        # wait for clean thread to stop
+        clean_thread.join()
+
+    def clean_managers(self):
+        """
+        Loop for cleaning closed or timed out managers until server is signalled to stop
+        :return: None
+        """
+        while not self.shouldStop.is_set():
+            manager_closed = self.manager_closed_event.wait(self.timeout)
+            if manager_closed:
+                self.manager_closed_event.clear()
+                managers = list(self.managerDict)
+                for manager_name in managers:
+                    manager = self.managerDict.get(manager_name)
+                    if manager and manager.is_stopped():
+                        self.remove_manager(manager_name)
+
+    def close_all_managers(self):
+        """
+        Stops and removes all managers
+        :return: None
+        """
+        keys = list(self.managerDict)
+        for key in keys:
+            try:
+                self.managerDict[key].stop()
+            except KeyError:
+                pass
+        for key in keys:
+            try:
+                self.managerDict[key].wait_until_not_running()
+            except KeyError:
+                pass
+            self.remove_manager(key)
+
+    def remove_manager(self, manager_uuid):
+        """
+        Removes manager with corresponding UUID from managerDict
+        :param manager_uuid: string form of UUID
+        :return: None
+        """
+        try:
+            self.managerDict.pop(manager_uuid)
+        except KeyError:
+            pass
+
+    def stop(self):
+        self.shouldStop.set()
