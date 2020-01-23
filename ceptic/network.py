@@ -1,9 +1,20 @@
 import select
 from sys import version_info
 
+from ceptic.common import CepticException
+
+
+class SocketCepticException(CepticException):
+    """
+    General SocketCeptic Exception, inherits from CepticException
+    """
+    pass
+
 
 if version_info < (3, 0):
     # Python 2
+    import socket
+
     class SocketCeptic(object):
         """
         Wrapper for normal or ssl socket; adds necessary CEPtic functionality to sending and receiving.
@@ -51,7 +62,10 @@ if version_info < (3, 0):
                 return
             sent = 0
             while sent < len(msg):
-                sent += self.s.send(msg[sent:])
+                try:
+                    sent += self.s.send(msg[sent:])
+                except socket.error as e:
+                    raise SocketCepticException("connection was closed: {}".format(str(e)))
 
         def recv(self, byte_amount, decode=True):
             """
@@ -65,9 +79,7 @@ if version_info < (3, 0):
                 size_to_recv = self.recv_raw(16)
                 size_to_recv = int(size_to_recv.strip())
             except ValueError:
-                raise EOFError("no data received (EOF)")
-            except OSError:
-                raise EOFError("no data received (EOF)")
+                raise SocketCepticException("no data received (EOF)")
             amount = byte_amount
             if size_to_recv < amount:
                 amount = size_to_recv
@@ -76,12 +88,17 @@ if version_info < (3, 0):
         def recv_raw(self, byte_amount, decode=True):
             recv_amount = 0
             text = ""
-            while recv_amount < byte_amount:
-                part = self.s.recv(byte_amount - recv_amount)
-                recv_amount += len(part)
-                text += part
-                if not part:
-                    break
+            try:
+                while recv_amount < byte_amount:
+                    part = self.s.recv(byte_amount - recv_amount)
+                    recv_amount += len(part)
+                    text += part
+                    if not part:
+                        break
+            except (EOFError, OSError):
+                raise SocketCepticException("no data received (EOF)")
+            except socket.error as e:
+                raise SocketCepticException("connection was closed: {}".format(str(e)))
             return text
 
         def get_socket(self):
@@ -153,6 +170,8 @@ else:
                     sent += self.s.send(msg[sent:].encode())
                 except AttributeError:
                     sent += self.s.send(msg[sent:])
+                except ConnectionResetError as e:
+                    raise SocketCepticException("connection was closed: {}".format(str(e)))
 
         def recv(self, byte_amount, decode=True):
             """
@@ -166,9 +185,7 @@ else:
                 size_to_recv = self.recv_raw(16)
                 size_to_recv = int(size_to_recv.strip())
             except ValueError:
-                raise EOFError("no data received (EOF)")
-            except OSError:
-                raise EOFError("no data received (EOF)")
+                raise SocketCepticException("no data received (EOF)")
             amount = byte_amount
             if size_to_recv < byte_amount:
                 amount = size_to_recv
@@ -184,12 +201,17 @@ else:
             """
             recv_amount = 0
             text = bytes()
-            while recv_amount < byte_amount:
-                part = self.s.recv(byte_amount - recv_amount)
-                recv_amount += len(part)
-                text += part
-                if not part:
-                    break
+            try:
+                while recv_amount < byte_amount:
+                    part = self.s.recv(byte_amount - recv_amount)
+                    recv_amount += len(part)
+                    text += part
+                    if not part:
+                        break
+            except (EOFError, OSError):
+                raise SocketCepticException("no data received (EOF)")
+            except ConnectionResetError as e:
+                raise SocketCepticException("connection was closed: {}".format(str(e)))
             if decode:
                 return text.decode()
             return text
