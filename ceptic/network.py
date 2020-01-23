@@ -154,7 +154,7 @@ else:
                 except AttributeError:
                     sent += self.s.send(msg[sent:])
 
-        def recv(self, byte_amount, decode=None):
+        def recv(self, byte_amount, decode=True):
             """
             Receive message, first the 16-byte length prefix, then the message of corresponding length. No more than the
             specified amount of bytes will be received, but based on the received length less bytes could be received
