@@ -207,8 +207,9 @@ class CepticServer(object):
         Initialize server configuration and processes
         :return: None
         """
-        # set up config
-        self.certificateManager.generate_context_tls()
+        if not self.settings["use_processes"]:
+            # set up config
+            self.certificateManager.generate_context_tls()
         # add get command
         self.add_command("get")
         # add post command
@@ -731,6 +732,8 @@ class HandleNewSocketRunner(Process):
         self.manager_closed_event = MP_Event()
 
     def run(self):
+        # set up certificate config
+        self.certificate_manager.generate_context_tls()
         # start clean thread
         clean_thread = threading.Thread(target=self.clean_managers)
         clean_thread.daemon = True
