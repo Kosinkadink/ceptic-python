@@ -530,7 +530,7 @@ class CepticServer(object):
 
     def route_post(self, endpoint, settings=None):
         """
-        Decorator for adding GET endpoints to server instance
+        Decorator for adding POST endpoints to server instance
         :param endpoint: string url for route to be added as an endpoint
         :param settings: optional dict generate by command_settings
         """
@@ -542,7 +542,7 @@ class CepticServer(object):
 
     def route_update(self, endpoint, settings=None):
         """
-        Decorator for adding GET endpoints to server instance
+        Decorator for adding UPDATE endpoints to server instance
         :param endpoint: string url for route to be added as an endpoint
         :param settings: optional dict generate by command_settings
         """
@@ -554,7 +554,7 @@ class CepticServer(object):
 
     def route_delete(self, endpoint, settings=None):
         """
-        Decorator for adding GET endpoints to server instance
+        Decorator for adding DELETE endpoints to server instance
         :param endpoint: string url for route to be added as an endpoint
         :param settings: optional dict generate by command_settings
         """
