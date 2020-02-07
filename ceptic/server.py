@@ -43,7 +43,7 @@ def server_settings(port=9000, version="1.0.0",
     if settings["send_buffer_size"] < settings["frame_max_size"] + 38 or \
             settings["read_buffer_size"] < settings["frame_max_size"] + 38:
         raise ValueError("send and read buffer size must be greater than "
-                         "frame_max_size+28 ({}); were {} and {}".format(settings["frame_max_size"] + 38,
+                         "frame_max_size+38 ({}); were {} and {}".format(settings["frame_max_size"] + 38,
                                                                          settings["send_buffer_size"],
                                                                          settings["read_buffer_size"]))
     return settings
