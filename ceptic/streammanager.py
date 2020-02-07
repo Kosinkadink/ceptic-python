@@ -3,7 +3,7 @@ import threading
 from time import sleep
 from sys import version_info
 from collections import deque
-from ceptic.common import CepticException, Timer
+from ceptic.common import CepticException, Timer, SafeCounter
 from ceptic.network import select_ceptic, SocketCepticException
 from ceptic.encode import EncodeGetter
 
@@ -78,7 +78,7 @@ class StreamManager(threading.Thread):
         self.send_event = threading.Event()
         self.keep_alive_timer = Timer()
         self.isDoneRunning = threading.Event()
-        self.handler_count = 0
+        self.handler_counter = SafeCounter(0)
         # timeouts/delays
         self.send_event_timeout = 0.1
         self.clean_delay_time = 0.1
@@ -94,12 +94,12 @@ class StreamManager(threading.Thread):
 
     def is_handler_limit_reached(self):
         if self.settings["handler_max_count"]:
-            if self.handler_count >= self.settings["handler_max_count"]:
+            if self.handler_counter.value >= self.settings["handler_max_count"]:
                 return True
         return False
 
     def get_handler_count(self):
-        return self.handler_count
+        return self.handler_counter.value
 
     def run(self):
         # set start time for keep alive timer
@@ -223,7 +223,7 @@ class StreamManager(threading.Thread):
         if stream_id is None:
             stream_id = str(uuid.uuid4())
         self.streams[stream_id] = StreamHandler(stream_id=stream_id, settings=self.settings, send_event=self.send_event)
-        self.handler_count += 1  # add to handler_count
+        self.handler_counter.increment(1)  # add to handler_counter
         return stream_id
 
     def close_handler(self, stream_id):
@@ -232,7 +232,7 @@ class StreamManager(threading.Thread):
         if stream:
             stream.stop()
             self.streams.pop(stream_id)
-            self.handler_count -= 1  # subtract from handler_count
+            self.handler_counter.decrement(1)  # subtract from handler_counter
 
     def close_all_handlers(self):
         # close all handlers currently stored in streams dict
@@ -290,8 +290,8 @@ class StreamHandler(object):
         self.frames_to_send = deque()
         self.frames_to_read = deque()
         # buffer sizes
-        self.send_buffer_size = 0
-        self.read_buffer_size = 0
+        self.send_buffer_counter = SafeCounter(0)
+        self.read_buffer_counter = SafeCounter(0)
         # events for awaiting decrease of buffer size
         self.send_buffer_ready_or_stop = threading.Event()
         self.read_buffer_ready_or_stop = threading.Event()
@@ -350,10 +350,10 @@ class StreamHandler(object):
         return False
 
     def is_send_buffer_full(self):
-        return self.send_buffer_size > self.send_buffer_limit
+        return self.send_buffer_counter.value > self.send_buffer_limit
 
     def is_read_buffer_full(self):
-        return self.read_buffer_size > self.read_buffer_limit
+        return self.read_buffer_counter.value > self.read_buffer_limit
 
     def send_close(self, data=""):
         """
@@ -377,7 +377,7 @@ class StreamHandler(object):
         self.keep_alive_timer.update()
         frame.data = self.encoder.encode(frame.get_data().encode())
         # check if enough room in buffer
-        self.send_buffer_size += frame.get_size()
+        self.send_buffer_counter.increment(frame.get_size())
         if self.is_send_buffer_full():
             # wait until buffer is decreased enough to fit new frame
             self.send_buffer_ready_or_stop.clear()
@@ -434,7 +434,7 @@ class StreamHandler(object):
         """
         self.keep_alive_timer.update()
         # check if enough room in buffer
-        self.read_buffer_size += frame.get_size()
+        self.read_buffer_counter.increment(frame.get_size())
         if self.is_read_buffer_full():
             # wait until buffer is decreased enough to fit new frame
             self.read_buffer_ready_or_stop.clear()
@@ -613,7 +613,7 @@ class StreamHandler(object):
         finally:
             # if frame was taken from deque, decrement deque size
             if frame:
-                self.send_buffer_size -= frame.get_size()
+                self.send_buffer_counter.decrement(frame.get_size())
                 # flag that send buffer is not full, if currently awaiting event
                 if not self.send_buffer_ready_or_stop.is_set() and not self.is_send_buffer_full():
                     self.send_buffer_ready_or_stop.set()
@@ -641,7 +641,7 @@ class StreamHandler(object):
         finally:
             # if frame was taken from queue, decrement deque size
             if frame:
-                self.read_buffer_size -= frame.get_size()
+                self.read_buffer_counter.decrement(frame.get_size())
                 # flag that read buffer is not full, if currently awaiting event
                 if not self.read_buffer_ready_or_stop.is_set() and not self.is_read_buffer_full():
                     self.read_buffer_ready_or_stop.set()
