@@ -2,6 +2,7 @@ import os
 import json
 from sys import version_info
 from time import time
+from threading import Lock
 
 
 def command_settings(body_max=102400000):
@@ -280,6 +281,22 @@ class Timer(object):
 
     def get_time(self):
         return time() - self.start_time
+
+
+class SafeCounter(object):
+    __slots__ = ("value", "_lock")
+
+    def __init__(self, value=0):
+        self.value = value
+        self._lock = Lock()
+
+    def increment(self, value):
+        with self._lock:
+            self.value += value
+
+    def decrement(self, value):
+        with self._lock:
+            self.value -= value
 
 
 def normalize_path(path):
