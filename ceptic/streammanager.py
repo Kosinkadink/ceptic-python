@@ -3,7 +3,7 @@ import threading
 from time import sleep
 from sys import version_info
 from collections import deque
-from ceptic.common import CepticException, Timer
+from ceptic.common import CepticException, Timer, SafeCounter
 from ceptic.network import select_ceptic, SocketCepticException
 from ceptic.encode import EncodeGetter
 
@@ -78,7 +78,7 @@ class StreamManager(threading.Thread):
         self.send_event = threading.Event()
         self.keep_alive_timer = Timer()
         self.isDoneRunning = threading.Event()
-        self.handler_count = 0
+        self.handler_count = SafeCounter(0)
         # timeouts/delays
         self.send_event_timeout = 0.1
         self.clean_delay_time = 0.1
@@ -94,12 +94,12 @@ class StreamManager(threading.Thread):
 
     def is_handler_limit_reached(self):
         if self.settings["handler_max_count"]:
-            if self.handler_count >= self.settings["handler_max_count"]:
+            if self.handler_count.value >= self.settings["handler_max_count"]:
                 return True
         return False
 
     def get_handler_count(self):
-        return self.handler_count
+        return self.handler_count.value
 
     def run(self):
         # set start time for keep alive timer
@@ -223,7 +223,7 @@ class StreamManager(threading.Thread):
         if stream_id is None:
             stream_id = str(uuid.uuid4())
         self.streams[stream_id] = StreamHandler(stream_id=stream_id, settings=self.settings, send_event=self.send_event)
-        self.handler_count += 1  # add to handler_count
+        self.handler_count.increment(1)  # add to handler_count
         return stream_id
 
     def close_handler(self, stream_id):
@@ -232,7 +232,7 @@ class StreamManager(threading.Thread):
         if stream:
             stream.stop()
             self.streams.pop(stream_id)
-            self.handler_count -= 1  # subtract from handler_count
+            self.handler_count.decrement(1)  # subtract from handler_count
 
     def close_all_handlers(self):
         # close all handlers currently stored in streams dict
