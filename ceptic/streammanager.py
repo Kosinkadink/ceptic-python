@@ -192,7 +192,12 @@ class StreamManager(threading.Thread):
                 self.keep_alive_timer.update()
                 # if keep_alive, ignore and stop processing; just there to keep connection alive
                 if received_frame.is_keep_alive():
-                    continue
+                    try:
+                        self.get_handler(received_frame.get_stream_id()).update_keep_alive_timer()
+                    except KeyError:
+                        pass
+                    finally:
+                        continue
                 # if stream is to be closed, add frame, stop appropriate stream and remove from dict
                 if received_frame.is_close():
                     try:
@@ -360,6 +365,9 @@ class StreamHandler(object):
         if self.keep_alive_timer.get_time() > self.settings["stream_timeout"]:
             return True
         return False
+
+    def update_keep_alive_timer(self):
+        self.keep_alive_timer.update()
 
     def is_send_buffer_full(self):
         return self.send_buffer_counter.value > self.send_buffer_limit
