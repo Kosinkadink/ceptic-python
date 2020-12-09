@@ -190,9 +190,9 @@ class StreamManager(threading.Thread):
                     continue
                 # update time for keep alive timer; just received frame, so connection must be alive
                 self.keep_alive_timer.update()
-                # if keep_alive, ignore; just there to keep connection alive
+                # if keep_alive, ignore and stop processing; just there to keep connection alive
                 if received_frame.is_keep_alive():
-                    pass
+                    continue
                 # if stream is to be closed, add frame, stop appropriate stream and remove from dict
                 if received_frame.is_close():
                     try:
