@@ -57,7 +57,7 @@ def begin_exchange(request):
     """
     response = CepticResponse(status=200)
     response.exchange = True
-    request.stream.send_data(response.get_data())
+    request.stream.send_response(response)
     return request.stream
 
 
@@ -109,9 +109,9 @@ def basic_server_command(stream, request, endpoint_func, endpoint_dict):
                                                 type(response)))
             if request.config_settings["verbose"]:
                 print("Exception type ({}) raised while generating response: {}".format(type(e), str(e)))
-            stream.send_data(error_response.get_data())
+            stream.send_response(error_response)
             return
-    stream.send_data(response.get_data())
+    stream.send_response(response)
     # if Content-Length header present, send response body
     if response.content_length:
         # TODO: Add file transfer functionality
@@ -433,14 +433,14 @@ class CepticServer(object):
             errors.extend(CepticServer.check_new_connection_headers(request))
             # if no errors, send positive response and continue
         if not errors:
-            stream.send_data(CepticResponse(200).get_data())
+            stream.send_response(CepticResponse(200))
             # set stream compression, based on request header
             stream.set_encode(request.encoding)
             command_func(stream, request, handler, variable_dict)
         # otherwise send info back
         else:
             # send frame with error and bad status
-            stream.send_data(CepticResponse(400, errors=errors).get_data())
+            stream.send_response(CepticResponse(400, errors=errors))
             stream.send_close()
 
     @staticmethod

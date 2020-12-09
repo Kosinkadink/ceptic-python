@@ -3,7 +3,7 @@ import threading
 from time import sleep
 from sys import version_info
 from collections import deque
-from ceptic.common import CepticException, Timer, SafeCounter
+from ceptic.common import CepticException, Timer, SafeCounter, CepticResponse
 from ceptic.network import select_ceptic, SocketCepticException
 from ceptic.encode import EncodeGetter
 
@@ -12,6 +12,18 @@ from ceptic.encode import EncodeGetter
 if version_info < (3, 0):
     from socket import error as socket_error
     ConnectionResetError = socket_error
+
+# enums for StreamFrame type
+DATA = "0"
+HEADER = "1"
+RESPONSE = "2"
+KEEP_ALIVE = "3"
+CLOSE = "4"
+CLOSE_ALL = "5"
+
+# enums for StreamFrame info
+CONTINUE = "0"
+END = "1"
 
 
 class StreamException(CepticException):
@@ -397,14 +409,18 @@ class StreamHandler(object):
         for frame in frames:
             self.send(frame)
 
-    def send_data(self, data, is_first_header=False):
+    def send_data(self, data, is_first_header=False, is_response=False):
         """
         Send all data in data parameter
         :param data:
         :param is_first_header:
+        :param is_response:
         :return:
         """
-        self.sendall(self.stream_frame_gen.from_data(data, is_first_header))
+        self.sendall(self.stream_frame_gen.from_data(data, is_first_header, is_response))
+
+    def send_response(self, response):
+        self.send_data(response.get_data(), is_response=True)
 
     def send_file(self, file_object):
         """
@@ -484,40 +500,64 @@ class StreamHandler(object):
             raise StreamClosedException(frame.get_data())
         return frame
 
-    def get_full_data(self, timeout=None, max_length=None):
+    def get_full_data(self, timeout=None, max_length=None, decode=True, convert_response=False):
         """
-        Returns combined data (if applicable) for continued frames until an end frame is encountered
+        Returns combined data (if applicable) for continued frames until an end frame is encountered,
+        or a CepticResponse instance
         :param timeout: optional timeout time (uses stream_timeout setting by default)
-        :param max_length: optional max length; allows throwing exception if exceeds limit
-        :return: string instance
+        :param max_length: optional max length; allows throwing StreamTotalDataSizeException if exceeds limit
+        :param decode: optional decode toggle; returns bytes if false, string if true (default), unless CepticResponse
+        :param convert_response: optional CepticResponse toggle; if true (default), will convert data to CepticResponse
+        if any frames encountered are of type RESPONSE
+        :return: string, bytes, or CepticResponse instance
         """
         if timeout is None:
             timeout = self.settings["stream_timeout"]
         frames = []
         total_length = 0
         frame_generator = self.gen_next_frame(timeout)
+        is_response = False
         for frame in frame_generator:
             if not frame:
                 break
             # add data
             frames.append(frame.get_data())
             total_length += len(frame.get_data())
-            if max_length and total_length > max_length:  # len(full_data) > max_length:
+            if max_length and total_length > max_length:
                 raise StreamTotalDataSizeException("total data received has surpassed max_length of {}".format(
                     max_length))
+            if frame.is_response():
+                is_response = True
             if frame.is_last():
                 break
         # decompress data
         if version_info < (3, 0):  # Python2 code
             full_data = "".join(frames)
+            if convert_response and is_response:
+                return CepticResponse.from_data(full_data)
             return full_data
         else:  # Python3 code
             full_data = bytes().join(frames)
-            return full_data.decode()
+            if convert_response and is_response:
+                return CepticResponse.from_data(full_data.decode())
+            if decode:
+                return full_data.decode()
+            return full_data
 
     def get_full_header_data(self, timeout=None):
         # length should be no more than allowed header size and max 128 command, 128 endpoint, and 2 \r\n (4 bytes)
-        return self.get_full_data(timeout, self.max_header_size + 128 + 128 + 4)
+        return self.get_full_data(timeout, self.max_header_size + 128 + 128 + 4, convert_response=False)
+
+    def get_data(self, timeout=None, max_length=None, decode=True):
+        """
+        Returns combined data (if applicable) for continued frames until an end frame is encountered,
+        or a CepticResponse instance
+        :param timeout: optional timeout time (uses stream_timeout setting by default)
+        :param max_length: optional max length; allows throwing StreamTotalDataSizeException if exceeds limit
+        :param decode: optional decode toggle; returns bytes if false, string if true (default), unless CepticResponse
+        :return: string, bytes, or CepticResponse instance
+        """
+        return self.get_full_data(timeout, max_length, decode, convert_response=True)
 
     def get_full_frames(self, timeout=None, max_length=None):
         """
@@ -689,11 +729,12 @@ class StreamFrameGen(object):
             # next chunk becomes current chunk
             curr_chunk = next_chunk
 
-    def from_data(self, data, is_first_header=False):
+    def from_data(self, data, is_first_header=False, is_response=False):
         """
         Generator for turning contents of file into frames
         :param data: string or byte array
         :param is_first_header: boolean
+        :param is_response: boolean
         :return: StreamFrame instance of type data
         """
         if not data:
@@ -710,14 +751,22 @@ class StreamFrameGen(object):
                     is_first_header = False
                     yield StreamFrame.create_header_last(self.stream_id, chunk)
                 else:
-                    yield StreamFrame.create_data_last(self.stream_id, chunk)
+                    if is_response:
+                        is_response = False
+                        yield StreamFrame.create_response_last(self.stream_id, chunk)
+                    else:
+                        yield StreamFrame.create_data_last(self.stream_id, chunk)
                 return
             # otherwise yield continued frame
             if is_first_header:
                 is_first_header = False
                 yield StreamFrame.create_header_continued(self.stream_id, chunk)
             else:
-                yield StreamFrame.create_data_continued(self.stream_id, chunk)
+                if is_response:
+                    is_response = False
+                    yield StreamFrame.create_response_continued(self.stream_id, chunk)
+                else:
+                    yield StreamFrame.create_data_continued(self.stream_id, chunk)
 
 
 class StreamFrame(object):
@@ -726,8 +775,6 @@ class StreamFrame(object):
     """
     __slots__ = ("stream_id", "type", "info", "data")
 
-    enum_type = {"data": "0", "header": "1", "keep_alive": "2", "close": "3", "close_all": "4"}
-    enum_info = {"continue": "0", "end": "1"}
     null_id = "00000000-0000-0000-0000-000000000000"
 
     def __init__(self, stream_id=None, frame_type=None, frame_info=None, data=""):
@@ -772,14 +819,21 @@ class StreamFrame(object):
         Change type to header frame
         :return: None
         """
-        self.type = StreamFrame.enum_type["header"]
+        self.type = HEADER
+
+    def set_to_response(self):
+        """
+        Change type to response frame
+        :return: None
+        """
+        self.type = RESPONSE
 
     def set_to_data(self):
         """
         Change type to data frame
         :return: None
         """
-        self.type = StreamFrame.enum_type["data"]
+        self.type = DATA
 
     def send(self, s):
         """
@@ -804,21 +858,35 @@ class StreamFrame(object):
         Checks if instance of frame is header type
         :return: bool
         """
-        return self.type == StreamFrame.enum_type["header"]
+        return self.type == HEADER
+
+    def is_response(self):
+        """
+        Checks if instance of frame is response type
+        :return: bool
+        """
+        return self.type == RESPONSE
 
     def is_data(self):
         """
         Checks if instance of frame is data type
         :return: bool
         """
-        return self.type == StreamFrame.enum_type["data"]
+        return self.type == DATA
 
     def is_last(self):
         """
         Checks if instance of frame is last (or only) part of data
         :return: bool
         """
-        return self.info == StreamFrame.enum_info["end"]
+        return self.info == END
+
+    def is_continued(self):
+        """
+        Checks if instance of frame is continued
+        :return: bool
+        """
+        return self.info == CONTINUE
 
     def is_data_last(self):
         """
@@ -832,28 +900,28 @@ class StreamFrame(object):
         Checks if instance of frame is data type and is the first (or continuation) of a complete dataset
         :return: bool
         """
-        return self.is_data() and self.info == StreamFrame.enum_info["continue"]
+        return self.is_data() and self.is_continued()
 
     def is_keep_alive(self):
         """
         Checks if instance of frame is keep_alive type
         :return: bool
         """
-        return self.type == StreamFrame.enum_type["keep_alive"]
+        return self.type == KEEP_ALIVE
 
     def is_close(self):
         """
         Checks if instance of frame is close type
         :return: bool
         """
-        return self.type == StreamFrame.enum_type["close"]
+        return self.type == CLOSE
 
     def is_close_all(self):
         """
         Checks if instance of frame is close_all type
         :return: bool
         """
-        return self.type == StreamFrame.enum_type["close_all"]
+        return self.type == CLOSE_ALL
 
     @classmethod
     def from_socket(cls, s, max_data_length):
@@ -890,12 +958,12 @@ class StreamFrame(object):
         return cls(stream_id, frame_type, frame_info, data)
 
     @classmethod
-    def create_header(cls, stream_id, data, frame_info=enum_info["end"]):
+    def create_header(cls, stream_id, data, frame_info=END):
         """
         Returns frame initialized as header type; defaults to last frame
         :return: StreamFrame instance
         """
-        return cls(stream_id, StreamFrame.enum_type["header"], frame_info, data)
+        return cls(stream_id, HEADER, frame_info, data)
 
     @classmethod
     def create_header_last(cls, stream_id, data):
@@ -903,7 +971,7 @@ class StreamFrame(object):
         Returns frame initialized as header type, end
         :return: StreamFrame instance
         """
-        return cls(stream_id, StreamFrame.enum_type["header"], StreamFrame.enum_info["end"], data)
+        return cls(stream_id, HEADER, END, data)
 
     @classmethod
     def create_header_continued(cls, stream_id, data):
@@ -911,15 +979,39 @@ class StreamFrame(object):
         Returns frame initialized as header type, continue
         :return: StreamFrame instance
         """
-        return cls(stream_id, StreamFrame.enum_type["header"], StreamFrame.enum_info["continue"], data)
+        return cls(stream_id, HEADER, CONTINUE, data)
 
     @classmethod
-    def create_data(cls, stream_id, data, frame_info=enum_info["end"]):
+    def create_response(cls, stream_id, data, frame_info=END):
+        """
+        Return frame initialized as response type; defaults to last frame
+        :return: StreamFrame instance
+        """
+        return cls(stream_id, RESPONSE, frame_info, data)
+
+    @classmethod
+    def create_response_last(cls, stream_id, data):
+        """
+        Return frame initialized as response type, end
+        :return: StreamFrame instance
+        """
+        return cls(stream_id, RESPONSE, END, data)
+
+    @classmethod
+    def create_response_continued(cls, stream_id, data):
+        """
+        Return frame initialized as response type, continue
+        :return: StreamFrame instance
+        """
+        return cls(stream_id, RESPONSE, CONTINUE, data)
+
+    @classmethod
+    def create_data(cls, stream_id, data, frame_info=END):
         """
         Returns frame initialized as data type; defaults to last frame
         :return: StreamFrame instance
         """
-        return cls(stream_id, StreamFrame.enum_type["data"], frame_info, data)
+        return cls(stream_id, DATA, frame_info, data)
 
     @classmethod
     def create_data_last(cls, stream_id, data):
@@ -927,7 +1019,7 @@ class StreamFrame(object):
         Returns frame initialized as data type, end
         :return: StreamFrame instance
         """
-        return cls(stream_id, StreamFrame.enum_type["data"], StreamFrame.enum_info["end"], data)
+        return cls(stream_id, DATA, END, data)
 
     @classmethod
     def create_data_continued(cls, stream_id, data):
@@ -935,7 +1027,7 @@ class StreamFrame(object):
         Returns frame initialized as data type, continue
         :return: StreamFrame instance
         """
-        return cls(stream_id, StreamFrame.enum_type["data"], StreamFrame.enum_info["continue"], data)
+        return cls(stream_id, DATA, CONTINUE, data)
 
     @classmethod
     def create_keep_alive(cls, stream_id):
@@ -943,7 +1035,7 @@ class StreamFrame(object):
         Returns frame initialized as keep_alive type
         :return: StreamFrame instance
         """
-        return cls(stream_id, StreamFrame.enum_type["keep_alive"], StreamFrame.enum_info["end"])
+        return cls(stream_id, KEEP_ALIVE, END)
 
     @classmethod
     def create_close(cls, stream_id, data=""):
@@ -951,7 +1043,7 @@ class StreamFrame(object):
         Returns frame initialized as close type
         :return: StreamFrame instance
         """
-        return cls(stream_id, StreamFrame.enum_type["close"], StreamFrame.enum_info["end"], data)
+        return cls(stream_id, CLOSE, END, data)
 
     @classmethod
     def create_close_all(cls):
@@ -959,4 +1051,4 @@ class StreamFrame(object):
         Returns frame initialized as close_all type
         :return: StreamFrame instance
         """
-        return cls(StreamFrame.null_id, StreamFrame.enum_type["close_all"], StreamFrame.enum_info["end"])
+        return cls(StreamFrame.null_id, CLOSE_ALL, END)

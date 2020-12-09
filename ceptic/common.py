@@ -34,6 +34,7 @@ class CepticStatusCode(object):
     NOT_FOUND = 404
     CONFLICT = 409
     INTERNAL_SERVER_ERROR = 500
+    LOCAL_ERROR = 600
 
     @staticmethod
     def is_success(status_code):
@@ -50,6 +51,10 @@ class CepticStatusCode(object):
     @staticmethod
     def is_server_error(status_code):
         return 500 <= status_code <= 599
+
+    @staticmethod
+    def is_local_error(status_code):
+        return 600 <= status_code <= 699
 
 
 class CepticRequest(object):

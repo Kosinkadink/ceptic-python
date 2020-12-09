@@ -6,7 +6,7 @@ import threading
 
 from ceptic.network import SocketCeptic
 from ceptic.common import CepticResponse, CepticRequest, CepticException
-from ceptic.common import command_settings
+from ceptic.common import CepticStatusCode, command_settings
 from ceptic.endpointmanager import EndpointManager
 from ceptic.certificatemanager import CertificateManager, CertificateManagerException, create_ssl_config
 from ceptic.streammanager import StreamManager, StreamClosedException, StreamException, StreamTotalDataSizeException
@@ -50,15 +50,15 @@ def basic_client_command(stream, request):
         try:
             stream.send_data(request.body)
         except StreamClosedException:
-            return CepticResponse(400, errors="stream closed while sending body")
+            return CepticResponse(CepticStatusCode.LOCAL_ERROR, errors="stream closed while sending body")
         except StreamException as e:
             stream.send_close()
-            return CepticResponse(400, errors="StreamException: {}".format(str(e)))
+            return CepticResponse(CepticStatusCode.LOCAL_ERROR, errors="StreamException: {}".format(str(e)))
     # get response
     try:
         response_data = stream.get_full_data(max_length=stream.frame_size)
     except StreamClosedException as e:
-        return CepticResponse(400, errors=str(e))
+        return CepticResponse(CepticStatusCode.LOCAL_ERROR, errors=str(e))
     response = CepticResponse.from_data(response_data)
     response.stream = stream
     response.settings = request.settings
@@ -71,16 +71,16 @@ def basic_client_command(stream, request):
                 response.content_length,
                 response.max_content_length)
             stream.send_close(error_msg)
-            return CepticResponse(400, errors=error_msg)
+            return CepticResponse(CepticStatusCode.LOCAL_ERROR, errors=error_msg)
         try:
             response.body = stream.get_full_data(max_length=response.content_length)
         except StreamTotalDataSizeException:
             stream.send_close("body received is greater than reported content_length")
-            response = CepticResponse(400, errors="body received is greater than reported content_length; body ignored")
+            response = CepticResponse(CepticStatusCode.LOCAL_ERROR, errors="body received is greater than reported content_length; body ignored")
         except StreamException as e:
             stream.send_close()
             response = CepticResponse(
-                400,
+                CepticStatusCode.LOCAL_ERROR,
                 errors="StreamException type ({}) thrown while receiving response body: {}".format(type(e), str(e))
             )
     # return response
@@ -380,7 +380,7 @@ class CepticClient(object):
         try:
             response_data = stream.get_full_data(max_length=stream.frame_size)
         except StreamClosedException as e:
-            return CepticResponse(400, errors=str(e))
+            return CepticResponse(CepticStatusCode.LOCAL_ERROR, errors=str(e))
         response = CepticResponse.from_data(response_data)
         # if successful response, continue
         if response.is_success():
