@@ -33,8 +33,7 @@ def test_get_command(server_all_files, client_all_files):
         # run server
         app.start()
         # make request to server
-        headers = dict()
-        response = client.connect_url("localhost:9000", "get", headers)
+        response = client.connect_url("localhost:9000", "get")
         # check that status was OK and body was "no body"
         assert response.status == 200
         assert response.body == "no body"
@@ -59,10 +58,9 @@ def test_get_echo_body(server_all_files, client_all_files):
         # run server
         app.start()
         # make request to server
-        headers = dict()
         # include a body smaller than frame_max_size
         body = "HELLOTHERE"
-        response = client.connect_url("localhost:9000", "get", headers, body=body)
+        response = client.connect_url("localhost:9000", "get", body=body)
         # check that status was OK and body was "no body"
         assert response.status == CepticStatusCode.OK
         assert response.body == body
@@ -88,9 +86,8 @@ def test_get_echo_body_multiple_frames(server_all_files, client_all_files):
         # run server
         app.start()
         # make request to server
-        headers = dict()
         body = "HELLOTHERE"*100
-        response = client.connect_url("localhost:9000", "get", headers, body=body)
+        response = client.connect_url("localhost:9000", "get", body=body)
         # check that status was OK and body was "no body"
         assert response.status == CepticStatusCode.OK
         assert response.body == body
@@ -177,8 +174,7 @@ def test_get_only_server_related_files(server_certfile_keyfile_only, client_cafi
         # run server
         app.start()
         # make request to server
-        headers = dict()
-        response = client.connect_url("localhost:9000", "get", headers)
+        response = client.connect_url("localhost:9000", "get")
         # check that status was OK and body was "no body"
         assert response.status == CepticStatusCode.OK
         assert response.body == "no body"
@@ -203,9 +199,8 @@ def test_get_client_does_not_recognize_server_certs(server_certfile_keyfile_only
         # run server
         app.start()
         # make request to server
-        headers = dict()
         with pytest.raises(CepticException):
-            client.connect_url("localhost:9000", "get", headers)
+            client.connect_url("localhost:9000", "get")
 
 
 @pytest.mark.usefixtures("server_not_secure", "client_not_secure")
@@ -227,8 +222,7 @@ def test_get_not_secure(server_not_secure, client_not_secure):
         # run server
         app.start()
         # make request to server
-        headers = dict()
-        response = client.connect_url("localhost:9000", "get", headers)
+        response = client.connect_url("localhost:9000", "get")
         # check that status was OK and body was "no body"
         assert response.status == CepticStatusCode.OK
         assert response.body == "no body"
@@ -240,9 +234,8 @@ def test_get_server_not_found(client_all_files):
     # init client
     client = client_all_files()
     # make request to server
-    headers = dict()
     with pytest.raises(CepticException):
-        client.connect_url("localhost:9000", "get", headers)
+        client.connect_url("localhost:9000", "get")
 
 
 @pytest.mark.usefixtures("server_all_files", "client_all_files")
@@ -264,9 +257,8 @@ def test_get_multiple_requests_series(server_all_files, client_all_files):
         # run server
         app.start()
         # make request to server
-        headers = dict()
         for i in range(0, 10):  # send requests in series
-            response = client.connect_url("localhost:9000/", "get", headers)
+            response = client.connect_url("localhost:9000/", "get")
             # check that status was OK and body was "no body"
             assert response.status == CepticStatusCode.OK
             assert response.body == "no body"
@@ -342,8 +334,7 @@ def test_post_command(server_all_files, client_all_files):
         app.start()
         # make request to server with body
         body = "HELLOTHERE"
-        headers = {"Content-Length": len(body)}
-        response = client.connect_url("localhost:9000/", "post", headers, body)
+        response = client.connect_url("localhost:9000/", "post", body=body)
         # check that status was OK and body was equal to body
         assert response.status == CepticStatusCode.OK
         assert response.body == body
@@ -369,8 +360,7 @@ def test_update_command(server_all_files, client_all_files):
         app.start()
         # make request to server with body
         body = "HELLOTHERE"
-        headers = {"Content-Length": len(body)}
-        response = client.connect_url("localhost:9000/", "update", headers, body)
+        response = client.connect_url("localhost:9000/", "update", body=body)
         # check that status was OK and body was equal to body
         assert response.status == CepticStatusCode.OK
         assert response.body == body
@@ -396,8 +386,7 @@ def test_delete_command(server_all_files, client_all_files):
         app.start()
         # make request to server with body
         body = "HELLOTHERE"
-        headers = {"Content-Length": len(body)}
-        response = client.connect_url("localhost:9000/", "delete", headers, body)
+        response = client.connect_url("localhost:9000/", "delete", body=body)
         # check that status was OK and body was equal to body
         assert response.status == CepticStatusCode.OK
         assert response.body == body

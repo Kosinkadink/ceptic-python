@@ -487,10 +487,7 @@ class StreamHandler(object):
         else:
             if not self.is_ready_to_read() and not self.is_stopped():
                 # wait for read event
-                triggered = self.read_or_stop_event.wait(timeout)
-                # if not triggered, must have timed out
-                if not triggered:
-                    raise StreamTimeoutException("handler {} has timed out getting next frame".format(self.stream_id))
+                self.read_or_stop_event.wait(timeout)
             # clear read event
             self.read_or_stop_event.clear()
         # if handler is stopped and no frames left to read, raise exception
@@ -499,7 +496,7 @@ class StreamHandler(object):
         # get frame
         frame = self.get_ready_to_read(expect_frame=expect_frame)
         # if frame is None and not expecting frame to be returned, return the None frame
-        if not frame and not expect_frame:
+        if not frame:
             return frame
         # decompress frame data
         frame.data = self.encoder.decode(frame.get_data())
