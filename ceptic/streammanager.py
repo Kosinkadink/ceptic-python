@@ -485,11 +485,13 @@ class StreamHandler(object):
             expect_frame = False
         # wait up to specified time; if no frame received by then, return
         else:
+            triggered = True
             if not self.is_ready_to_read() and not self.is_stopped():
                 # wait for read event
-                self.read_or_stop_event.wait(timeout)
+                triggered = self.read_or_stop_event.wait(timeout)
             # clear read event
-            self.read_or_stop_event.clear()
+            if triggered:
+                self.read_or_stop_event.clear()
         # if handler is stopped and no frames left to read, raise exception
         if self.is_stopped() and not self.is_ready_to_read():
             raise StreamHandlerStoppedException("handler is stopped; cannot receive frames")
