@@ -19,17 +19,19 @@ def client_settings(version="1.0.0",
                     body_max=102400000,
                     stream_min_timeout=1, stream_timeout=5,
                     send_buffer_size=102400000, read_buffer_size=102400000):
-    settings = {"version": str(version),
-                "headers_min_size": int(headers_min_size),
-                "headers_max_size": int(headers_max_size),
-                "frame_min_size": int(frame_min_size),
-                "frame_max_size": int(frame_max_size),
-                "body_max": int(body_max),
-                "stream_min_timeout": int(stream_min_timeout),
-                "stream_timeout": int(stream_timeout),
-                "send_buffer_size": int(send_buffer_size),
-                "read_buffer_size": int(read_buffer_size),
-                "default_port": 9000}
+    settings = {
+        "version": str(version),
+        "headers_min_size": int(headers_min_size),
+        "headers_max_size": int(headers_max_size),
+        "frame_min_size": int(frame_min_size),
+        "frame_max_size": int(frame_max_size),
+        "body_max": int(body_max),
+        "stream_min_timeout": int(stream_min_timeout),
+        "stream_timeout": int(stream_timeout),
+        "send_buffer_size": int(send_buffer_size),
+        "read_buffer_size": int(read_buffer_size),
+        "default_port": 9000
+    }
     if settings["frame_min_size"] > settings["frame_max_size"]:
         settings["frame_min_size"] = settings["frame_max_size"]
     if settings["frame_min_size"] < 1000:

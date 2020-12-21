@@ -21,21 +21,23 @@ def server_settings(port=9000, version="1.0.0",
                     send_buffer_size=102400000, read_buffer_size=102400000,
                     handler_max_count=0, block_on_start=False,
                     request_queue_size=10, verbose=False):
-    settings = {"port": int(port),
-                "version": str(version),
-                "headers_min_size": int(headers_min_size),
-                "headers_max_size": int(headers_max_size),
-                "frame_min_size": int(frame_min_size),
-                "frame_max_size": int(frame_max_size),
-                "body_max": int(body_max),
-                "stream_min_timeout": int(stream_min_timeout),
-                "stream_timeout": int(stream_timeout),
-                "send_buffer_size": int(send_buffer_size),
-                "read_buffer_size": int(read_buffer_size),
-                "handler_max_count": int(handler_max_count),
-                "block_on_start": bool(block_on_start),
-                "request_queue_size": int(request_queue_size),
-                "verbose": bool(verbose)}
+    settings = {
+        "port": int(port),
+        "version": str(version),
+        "headers_min_size": int(headers_min_size),
+        "headers_max_size": int(headers_max_size),
+        "frame_min_size": int(frame_min_size),
+        "frame_max_size": int(frame_max_size),
+        "body_max": int(body_max),
+        "stream_min_timeout": int(stream_min_timeout),
+        "stream_timeout": int(stream_timeout),
+        "send_buffer_size": int(send_buffer_size),
+        "read_buffer_size": int(read_buffer_size),
+        "handler_max_count": int(handler_max_count),
+        "block_on_start": bool(block_on_start),
+        "request_queue_size": int(request_queue_size),
+        "verbose": bool(verbose)
+    }
     if settings["frame_min_size"] > settings["frame_max_size"]:
         settings["frame_min_size"] = settings["frame_max_size"]
     if settings["frame_min_size"] < 1000:

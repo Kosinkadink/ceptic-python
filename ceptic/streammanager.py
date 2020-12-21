@@ -89,6 +89,7 @@ class StreamManager(threading.Thread):
         self.stop_reason = ""
         self.send_event = threading.Event()
         self.keep_alive_timer = Timer()
+        self.existence_timer = Timer()
         self.isDoneRunning = threading.Event()
         self.handler_counter = SafeCounter(0)
         # timeouts/delays
@@ -114,6 +115,8 @@ class StreamManager(threading.Thread):
         return self.handler_counter.value
 
     def run(self):
+        # set start time for manager existence timer
+        self.existence_timer.start()
         # set start time for keep alive timer
         self.keep_alive_timer.start()
         # start receive thread
@@ -313,6 +316,9 @@ class StreamHandler(object):
         self.send_buffer_ready_or_stop = threading.Event()
         self.read_buffer_ready_or_stop = threading.Event()
         self.buffer_wait_timeout = 0.1
+        # handler existence timer
+        self.existence_timer = Timer()
+        self.existence_timer.start()
         # keep_alive timer
         self.keep_alive_timer = Timer()
         self.keep_alive_timer.start()

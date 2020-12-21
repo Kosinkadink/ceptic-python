@@ -5,11 +5,14 @@ from time import time
 from threading import Lock
 
 
-def command_settings(body_max=102400000):
+def command_settings(body_max=102400000, time_max=0):
     """
     Generates dictionary with command settings
     """
-    settings = {"body_max": int(body_max)}
+    settings = {
+        "body_max": int(body_max),
+        "time_max": int(time_max)
+    }
     return settings
 
 
@@ -42,7 +45,7 @@ class CepticStatusCode(object):
 
     @staticmethod
     def is_error(status_code):
-        return 400 <= status_code <= 599
+        return 400 <= status_code <= 699
 
     @staticmethod
     def is_client_error(status_code):
@@ -221,6 +224,9 @@ class CepticResponse(object):
 
     def is_server_error(self):
         return CepticStatusCode.is_server_error(self.status)
+
+    def is_local_error(self):
+        return CepticStatusCode.is_local_error(self.status)
 
     def get_dict(self):
         return {"status": self.status, "body": self.body, "headers": self.headers}
