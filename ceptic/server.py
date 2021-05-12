@@ -7,7 +7,7 @@ import uuid
 from ceptic.network import SocketCeptic
 from ceptic.common import CepticRequest, CepticResponse, CepticStatusCode
 from ceptic.common import command_settings
-from ceptic.endpointmanager import EndpointManager
+from ceptic.endpointmanager import EndpointManager, EndpointManagerException
 from ceptic.certificatemanager import CertificateManager, CertificateManagerException, create_ssl_config
 from ceptic.streammanager import StreamManager, StreamException, StreamTotalDataSizeException
 from ceptic.encode import EncodeGetter, UnknownEncodingException
@@ -431,7 +431,7 @@ class CepticServer(object):
                 request.config_settings = local_settings
             except KeyError as e:
                 errors.append(str(e))
-            except EndpointManager as e:
+            except EndpointManagerException as e:
                 errors.append(str(e))
             # check that headers are valid/proper
             errors.extend(CepticServer.check_new_connection_headers(request))
