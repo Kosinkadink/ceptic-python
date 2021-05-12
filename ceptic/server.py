@@ -429,8 +429,10 @@ class CepticServer(object):
                 request.settings = settings_merged
                 # set server settings as request's config settings
                 request.config_settings = local_settings
-            except KeyError:
-                errors.append("endpoint of type {} not recognized: {}".format(request.command, request.endpoint))
+            except KeyError as e:
+                errors.append(str(e))
+            except EndpointManager as e:
+                errors.append(str(e))
             # check that headers are valid/proper
             errors.extend(CepticServer.check_new_connection_headers(request))
             # if no errors, send positive response and continue
