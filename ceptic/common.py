@@ -41,7 +41,7 @@ class CepticStatusCode(object):
 
     @staticmethod
     def is_success(status_code):
-        return 200 <= status_code <= 299
+        return 200 <= status_code <= 399
 
     @staticmethod
     def is_error(status_code):
@@ -160,12 +160,12 @@ class CepticResponse(object):
     @property
     def errors(self):
         if self.headers:
-            return self.headers.get("errors")
+            return self.headers.get("Errors")
         return None
 
     @errors.setter
     def errors(self, errors):
-        self.headers["errors"] = errors
+        self.headers["Errors"] = errors
 
     @property
     def content_length(self):
