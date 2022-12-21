@@ -2,3 +2,6 @@ build/*
 .idea/*
 *.pyc
 .cache/*
+env/*
+env3/*
+*.egg-info/*

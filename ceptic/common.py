@@ -1,67 +1,267 @@
-#!/usr/bin/python2
-
 import os
-import select
-import sys
+import json
 from sys import version_info
+from time import time
+from threading import Lock
 
-# NOTE: "import ceptic.managers as managers" is found on bottom of file to work around circular import
 
-
-class CepticAbstraction(object):
+def command_settings(body_max=102400000, time_max=0):
     """
-    Object used to store common elements between CepticClient and CepticServer
+    Generates dictionary with command settings
     """
+    settings = {
+        "body_max": int(body_max),
+        "time_max": int(time_max)
+    }
+    return settings
 
-    varDict = dict(send_cache=409600)
 
-    def __init__(self, location):
-        self.__location__ = location
-        self.fileManager = managers.filemanager.FileManager(self.__location__)
-        self.protocolManager = managers.protocolmanager.ProtocolManager(self.__location__)
-        self.terminalManager = managers.terminalmanager.TerminalManager()
-        self.endpointManager = managers.endpointmanager.EndpointManager()
+class CepticCommands(object):
+    GET = "get"
+    POST = "post"
+    UPDATE = "update"
+    DELETE = "delete"
+    STREAM = "stream"
+    STREAMGET = "streamget"
+    STREAMPOST = "streampost"
 
-    def add_terminal_commands(self):
-        """
-        Add additional terminal commands here by overriding this function
-        :return: None
-        """
-        pass
 
-    def add_endpoint_commands(self):
-        """
-        Add additional endpoints here bu overriding this function
-        :return: None
-        """
-        pass
+class CepticStatusCode(object):
+    OK = 200
+    CREATED = 201
+    NO_CONTENT = 204
+    NOT_MODIFIED = 304
+    BAD_REQUEST = 400
+    UNAUTHORIZED = 401
+    FORBIDDEN = 403
+    NOT_FOUND = 404
+    CONFLICT = 409
+    INTERNAL_SERVER_ERROR = 500
+    LOCAL_ERROR = 600
 
-    def service_terminal(self, inp):  # used for server commands
-        """
-        Pass input into terminalManager
-        :param inp: raw string input
-        :return: return value of whatever terminal command, or None
-        """
-        try:
-            # get command from terminal manager and run it with input
-            return self.terminalManager.perform_input(inp)
-        except TerminalManagerException as e:
-            print(str(e))
-        except Exception as e:
-            print(str(e))
+    @staticmethod
+    def is_success(status_code):
+        return 200 <= status_code <= 399
 
-    def get_cache_size(self):
-        return self.varDict["send_cache"]
+    @staticmethod
+    def is_error(status_code):
+        return 400 <= status_code <= 699
 
-    def clear(self):
-        """
-        Clears screen
-        :return: None
-        """
-        if os.name == 'nt':
-            os.system('cls')
+    @staticmethod
+    def is_client_error(status_code):
+        return 400 <= status_code <= 499
+
+    @staticmethod
+    def is_server_error(status_code):
+        return 500 <= status_code <= 599
+
+    @staticmethod
+    def is_local_error(status_code):
+        return 600 <= status_code <= 699
+
+
+class CepticRequest(object):
+    def __init__(self, command=None, endpoint=None, headers=None, body=None, settings=None, config_settings=None,
+                 url=None):
+        self.command = command
+        self.endpoint = endpoint
+        self.headers = headers
+        self.body = body
+        self.settings = settings
+        self.config_settings = config_settings
+        self.url = url
+        if not self.headers:
+            self.headers = {}
+        if self.body:
+            self.content_length = len(body)
+        self.stream = None
+
+    @property
+    def content_length(self):
+        if self.headers:
+            return self.headers.get("Content-Length")
+        return None
+
+    @content_length.setter
+    def content_length(self, length):
+        self.headers["Content-Length"] = length
+
+    @property
+    def max_content_length(self):
+        if self.settings:
+            return self.settings["body_max"]
+        return 0
+
+    @property
+    def content_type(self):
+        if self.headers:
+            return self.headers.get("Content-Type")
+        return None
+
+    @content_type.setter
+    def content_type(self, value):
+        self.headers["Content-Type"] = value
+
+    @property
+    def encoding(self):
+        if self.headers:
+            return self.headers.get("Encoding")
+        return None
+
+    @encoding.setter
+    def encoding(self, value):
+        self.headers["Encoding"] = value
+
+    @property
+    def authorization(self):
+        if self.headers:
+            return self.headers.get("Authorization")
+        return None
+
+    @authorization.setter
+    def authorization(self, value):
+        self.headers["Authorization"] = value
+
+    @property
+    def files(self):
+        if self.headers:
+            return self.headers.get("Files")
+        return None
+
+    @files.setter
+    def files(self, value):
+        self.headers["Files"] = value
+
+    def get_data(self):
+        json_headers = json.dumps(self.headers)
+        return "{}\r\n{}\r\n{}".format(self.command, self.endpoint, json_headers)
+
+    @classmethod
+    def from_data(cls, data):
+        command, endpoint, json_headers = data.split("\r\n")
+        headers = json.loads(json_headers, object_pairs_hook=decode_unicode_hook)
+        return cls(command, endpoint, headers)
+
+
+class CepticResponse(object):
+    def __init__(self, status, body="", headers=None, errors=None, stream=None):
+        self.status = int(status)
+        self.headers = headers
+        self.body = body
+        self.settings = None
+        self.stream = stream
+        if not self.headers:
+            self.headers = {}
+        if self.body:
+            self.content_length = len(body)
+        if errors:
+            self.errors = errors
+
+    @property
+    def errors(self):
+        if self.headers:
+            return self.headers.get("Errors")
+        return None
+
+    @errors.setter
+    def errors(self, errors):
+        self.headers["Errors"] = errors
+
+    @property
+    def content_length(self):
+        if self.headers:
+            return self.headers.get("Content-Length")
+        return None
+
+    @content_length.setter
+    def content_length(self, length):
+        self.headers["Content-Length"] = length
+
+    @property
+    def max_content_length(self):
+        if self.settings:
+            return self.settings["body_max"]
+        return 0
+
+    @property
+    def content_type(self):
+        if self.headers:
+            return self.headers.get("Content-Type")
+        return None
+
+    @content_type.setter
+    def content_type(self, value):
+        self.headers["Content-Type"] = value
+
+    @property
+    def exchange(self):
+        if self.headers:
+            return self.headers.get("Exchange")
+        return None
+
+    @exchange.setter
+    def exchange(self, value):
+        self.headers["Exchange"] = value
+
+    @property
+    def files(self):
+        if self.headers:
+            return self.headers.get("Files")
+        return None
+
+    @files.setter
+    def files(self, value):
+        self.headers["Files"] = value
+
+    def is_success(self):
+        return CepticStatusCode.is_success(self.status)
+
+    def is_error(self):
+        return CepticStatusCode.is_error(self.status)
+
+    def is_client_error(self):
+        return CepticStatusCode.is_client_error(self.status)
+
+    def is_server_error(self):
+        return CepticStatusCode.is_server_error(self.status)
+
+    def is_local_error(self):
+        return CepticStatusCode.is_local_error(self.status)
+
+    def get_dict(self):
+        return {"status": self.status, "body": self.body, "headers": self.headers}
+
+    def get_data(self):
+        return "{}\r\n{}".format(self.status, json.dumps(self.headers))
+
+    @classmethod
+    def from_data(cls, data):
+        status, json_headers = data.split("\r\n")
+        if json_headers:
+            return cls(status, headers=json.loads(json_headers, object_pairs_hook=decode_unicode_hook))
         else:
-            os.system('clear')
+            return cls(status)
+
+    @classmethod
+    def from_frame(cls, frame):
+        status, json_headers, body = frame.get_data().split("\r\n")
+        return cls(status, body, headers=json.loads(json_headers, object_pairs_hook=decode_unicode_hook))
+
+    @staticmethod
+    def get_with_socket(s, max_msg_length):
+        status = int(s.recv(3))
+        body = s.recv(max_msg_length)
+        return CepticResponse(status, body)
+
+    def send_with_socket(self, s):
+        s.sendall('%3d' % self.status)
+        s.sendall(self.body)
+
+    def __repr__(self):
+        return str(self.get_dict())
+
+    def __str__(self):
+        return self.__repr__()
 
 
 class CepticException(Exception):
@@ -71,369 +271,43 @@ class CepticException(Exception):
     pass
 
 
-class FrameCeptic(object):
-    """
-    Interface for frames to be send via send/recv commands
-    """
+class Timer(object):
+    __slots__ = ("start_time", "end_time")
+
     def __init__(self):
-        pass
+        self.start_time = None
+        self.end_time = None
 
-    def send(self, s):
-        pass
+    def start(self):
+        self.start_time = time()
 
-    def recv(self, s):
-        pass
+    def update(self):
+        self.start()
 
+    def stop(self):
+        self.end_time = time()
 
-class FileFrame(object):
-    """
-    Object to store metadata about a file to be sent/received
-    """
-    def __init__(self, file_name, file_path, send_cache):
-        self.file_name = file_name
-        self.file_path = file_path
-        self.send_cache = send_cache
-        if version_info >= (3,0): # check if running python3
-            self.recv = self.recv_py3
+    def get_time_diff(self):
+        return self.end_time - self.start_time
 
-    def send(self, s):
-        """
-        Send file from specified location
-        :param s: some SocketCeptic instance 
-        :param file_path: full path of file location
-        :param file_name: filename of file; for display purposes only
-        :param send_cache: amount of bytes to attempt to send at a time
-        :return: status of upload (success: 200, failure: 400)
-        """
-        file_name = self.file_name
-        file_path = self.file_path
-        send_cache = self.send_cache
-        try:
-            # check if file exists, and if not send file length as all "n"
-            if not os.path.isfile(file_path):
-                s.sendall("n"*16)
-                raise IOError("No file found at {}".format(file_path))
-            file_length = os.path.getsize(file_path)
-            # send size of file
-            s.sendall("%16d" % file_length)
-            # open file and send it
-            print(file_path)
-            with open(file_path, 'rb') as f:
-                print("{} sending...".format(file_name))
-                sent = 0
-                while file_length > sent:
-                    # print progress of upload, ignore if cannot display
-                    try:
-                        sys.stdout.write(
-                            str((float(sent) / file_length) * 100)[:4] + '%   ' + str(sent) + '/' + str(
-                                file_length) + ' B\r')
-                        sys.stdout.flush()
-                    except:
-                        pass
-                    data = f.read(send_cache)
-                    s.sendall(data)
-                    if not data:
-                        break
-                    sent += len(data)
-            # get heartbeat
-            s.recv(2)
-            sys.stdout.write('100.0%   ' + str(sent) + '/' + str(file_length) + ' B\n')
-            print("{} sending successful".format(file_name))
-            # return metadata
-            return {"status": 200, "msg": "OK"}
-        except Exception as e:
-            print("ERROR has occured while sending file")
-            return {"status": 400, "msg": "{}".format(str(e))}
-
-    def recv(self, s):
-        """
-        Receive a file to specified location
-        :param s: some SocketCeptic instance
-        :param file_path: full path of save location
-        :param file_name: filename of file; for display purposes only
-        :param send_cache: amount of bytes to attempt to receive at a time
-        :return: status of download (success: 200, failure: 400)
-        """
-        file_name = self.file_name
-        file_path = self.file_path
-        send_cache = self.send_cache
-        try:
-            # get size of file
-            received_string = s.recv(16).strip()
-            if received_string == "n"*16:
-                raise IOError("No file found ({}) on sender side".format(file_name))
-            file_length = int(received_string)
-            with open(file_path, 'wb') as f:
-                print("{} receiving...".format(file_name))
-                received = 0
-                while file_length > received:
-                    # print progress of download, ignore if cannot display
-                    try:
-                        sys.stdout.write(
-                            str((float(received) / file_length) * 100)[:4] + '%   ' + str(received) + '/' + str(file_length)
-                            + 'B\r'
-                        )
-                        sys.stdout.flush()
-                    except:
-                        pass
-                    data = s.recv(send_cache)
-                    if not data:
-                        break
-                    received += len(data)
-                    f.write(data)
-            # send heartbeat
-            s.sendall("ok")
-            sys.stdout.write('100.0%   ' + str(received) + '/' + str(file_length) + ' B\n')
-            print("{} receiving successful".format(file_name))
-            # return metadata
-            return {"status": 200, "msg": "OK"}
-        except Exception as e:
-            print("ERROR has occured while receiving file")
-            return {"status": 400, "msg": "{}".format(str(e))}
-
-    def recv_py3(self, s):
-        """
-        Receive a file to specified location
-        :param s: some SocketCeptic instance
-        :param file_path: full path of save location
-        :param file_name: filename of file; for display purposes only
-        :param send_cache: amount of bytes to attempt to receive at a time
-        :return: status of download (success: 200, failure: 400)
-        """
-        file_name = self.file_name
-        file_path = self.file_path
-        send_cache = self.send_cache
-        try:
-            # get size of file
-            received_string = s.recv(16).strip()
-            if received_string == "n"*16:
-                raise IOError("No file found ({}) on sender side".format(file_name))
-            file_length = int(received_string)
-            with open(file_path, 'wb') as f:
-                print("{} receiving...".format(file_name))
-                received = 0
-                while file_length > received:
-                    # print progress of download, ignore if cannot display
-                    try:
-                        sys.stdout.write(
-                            str((float(received) / file_length) * 100)[:4] + '%   ' + str(received) + '/' + str(file_length)
-                            + 'B\r'
-                        )
-                        sys.stdout.flush()
-                    except:
-                        pass
-                    data = s.recv(send_cache).encode()
-                    if not data:
-                        break
-                    received += len(data)
-                    f.write(data)
-            # send heartbeat
-            s.sendall("ok")
-            sys.stdout.write('100.0%   ' + str(received) + '/' + str(file_length) + ' B\n')
-            print("{} receiving successful".format(file_name))
-            # return metadata
-            return {"status": 200, "msg": "OK"}
-        except Exception as e:
-            print("ERROR has occured while receiving file")
-            return {"status": 400, "msg": "{}".format(str(e))}
+    def get_time(self):
+        return time() - self.start_time
 
 
+class SafeCounter(object):
+    __slots__ = ("value", "_lock")
 
+    def __init__(self, value=0):
+        self.value = value
+        self._lock = Lock()
 
-class SocketCeptic(object):
-    def __init__(self,  s):
-        pass
-    def __new__(self_class, s):
-        if version_info < (3,0): # python2 code
-            actual_class = SocketCepticPy2
-        else:
-            actual_class = SocketCepticPy3
-        instance = super(SocketCeptic, actual_class).__new__(actual_class)
-        if actual_class != self_class:
-            instance.__init__(s)
-        return instance
+    def increment(self, value):
+        with self._lock:
+            self.value += value
 
-
-class SocketCepticPy2(SocketCeptic):
-    """
-    Wrapper for normal or ssl socket; adds necessary CEPtic functionality to sending and receiving.
-    Usage: wrapped_socket = SocketCeptic(existing_socket)
-    """
-    def __init__(self, s):
-        self.s = s
-
-    def send(self, msg):
-        """
-        Send message, prefixed by a 16-byte length
-        :param msg: string or bytes to send
-        :return: None
-        """
-        # if there is nothing to send, then don't just send size
-        if not msg:
-            return
-        total_size = '%16d' % len(msg)
-        self.s.sendall(total_size + msg)
-
-    def sendall(self, msg):
-        """
-        Send message, wrapper for SocketCeptic.send
-        :param msg: string or bytes to send
-        :return: None
-        """
-        return self.send(msg)
-
-    def recv(self, byte_amount):
-        """
-        Receive message, first the 16-byte length prefix, then the message of corresponding length. No more than the
-        specified amount of bytes will be received, but based on the received length less bytes could be received
-        :param byte_amount: integer
-        :return: received bytes, readable as a string
-        """
-        try:
-            size_to_recv = self.s.recv(16)
-            size_to_recv = int(size_to_recv.strip())
-        except ValueError as e:
-            raise EOFError("no data received (EOF)")
-        except:
-            raise EOFError("no data received (EOF)")
-        amount = byte_amount
-        if size_to_recv < amount:
-            amount = size_to_recv
-        recvd = 0
-        text = ""
-        while recvd < amount:
-            part = self.s.recv(amount)
-            recvd += len(part)
-            text += part
-            if part == "":
-                break
-        return text
-
-    def get_socket(self):
-        """
-        Return raw socket instance
-        :return: basic socket instance (socket.socket)
-        """
-        return self.s
-
-    def close(self):
-        """
-        Close socket
-        :return: None
-        """
-        self.s.close()
-
-
-class SocketCepticPy3(SocketCeptic):
-    """
-    Wrapper for normal or ssl socket; adds necessary CEPtic functionality to sending and receiving.
-    Usage: wrapped_socket = SocketCeptic(existing_socket)
-    """
-    def __init__(self, s):
-        self.s = s
-
-    def send(self, msg):
-        """
-        Send message, prefixed by a 16-byte length
-        :param msg: string or bytes to send
-        :return: None
-        """
-        # if there is nothing to send, then don't just send size
-        if not msg:
-            return
-        total_size = '%16d' % len(msg)
-        # if it is already in bytes, do not encode it
-        try:
-            self.s.sendall(total_size.encode() + msg.encode())
-        except AttributeError:
-            print("attribute error occurred")
-            self.s.sendall(total_size.encode() + msg)
-
-    def sendall(self, msg):
-        """
-        Send message, wrapper for SocketCeptic.send
-        :param msg: string or bytes to send
-        :return: None
-        """
-        return self.send(msg)
-
-    def recv(self, byte_amount):
-        """
-        Receive message, first the 16-byte length prefix, then the message of corresponding length. No more than the
-        specified amount of bytes will be received, but based on the received length less bytes could be received
-        :param byte_amount: integer
-        :return: received bytes, readable as a string
-        """
-        try:
-            size_to_recv = self.s.recv(16)
-            size_to_recv = int(size_to_recv.strip())
-        except ValueError as e:
-            raise EOFError("no data received (EOF)")
-        except OSError as e:
-            raise EOFError("no data received (EOF)")
-        amount = byte_amount
-        if size_to_recv < amount:
-            amount = size_to_recv
-        recvd = 0
-        text = bytes()
-        while recvd < amount:
-            part = self.s.recv(amount)
-            recvd += len(part)
-            text += part
-            if part == "":
-                break
-        return text.decode()
-
-    def get_socket(self):
-        """
-        Return raw socket instance
-        :return: basic socket instance (socket.socket)
-        """
-        return self.s
-
-    def close(self):
-        """
-        Close socket
-        :return: None
-        """
-        self.s.close()
-
-
-def select_ceptic(read_list, write_list, error_list, timeout):
-    """
-    CEPtic wrapper version of the select function
-    :param read_list: see select.select
-    :param write_list: see select.select
-    :param error_list: see select.select
-    :param timeout: see select.select
-    :return: see select.select
-    """
-    read_dict = {}
-    write_dict = {}
-    error_dict = {}
-    # fill out dicts with socket:SocketCeptic pairs
-    for sCep in read_list:
-        read_dict.setdefault(sCep.get_socket(), sCep)
-    for sCep in write_list:
-        write_dict.setdefault(sCep.get_socket(), sCep)
-    for sCep in error_list:
-        error_dict.setdefault(sCep.get_socket(), sCep)
-
-    ready_to_read, ready_to_write, in_error = select.select(read_dict.keys(), write_dict.keys(), error_dict.keys(),
-                                                            timeout)
-    # lists returned back
-    ready_read = []
-    ready_write = []
-    have_error = []
-    # fill out lists with corresponding SocketCeptics
-    for sock in ready_to_read:
-        ready_read.append(read_dict[sock])
-    for sock in ready_to_write:
-        ready_write.append(write_dict[sock])
-    for sock in in_error:
-        have_error.append(error_dict[sock])
-
-    return ready_read, ready_write, have_error
+    def decrement(self, value):
+        with self._lock:
+            self.value -= value
 
 
 def normalize_path(path):
@@ -447,27 +321,13 @@ def normalize_path(path):
     return path
 
 
-def parse_settings_file(location):
-    """
-    Parse a settings file into list; all lines not starting with # are parsed, values separated by |
-    :param location: settings file path
-    :return: list containing parsed values
-    """
-    parsed = []
-    with open(location, "rb") as settings:
-        for line in settings:
-            if not line.startswith("#"):
-                parsed.append(line.strip().split('|'))
-    return parsed
-
-
 def decode_unicode_hook(json_pairs):
     """
     Given json pairs, properly encode strings into utf-8 for general usage
     :param json_pairs: dictionary of json key-value pairs
     :return: new dictionary of json key-value pairs in utf-8
     """
-    if version_info >= (3,0): # is 3.X
+    if version_info >= (3, 0):  # is 3.X
         return dict(json_pairs)
     new_json_pairs = []
     for key, value in json_pairs:
@@ -477,7 +337,3 @@ def decode_unicode_hook(json_pairs):
             key = key.encode("utf-8")
         new_json_pairs.append((key, value))
     return dict(new_json_pairs)
-
-
-import ceptic.managers as managers
-from ceptic.managers.terminalmanager import TerminalManagerException
