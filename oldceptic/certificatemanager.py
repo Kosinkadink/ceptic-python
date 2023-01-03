@@ -1,5 +1,5 @@
 import ssl
-from ceptic.common import CepticException
+from oldceptic.common import CepticException
 
 
 def create_ssl_config(certfile=None, keyfile=None, cafile=None, check_hostname=True, secure=True, ssl_context=None):

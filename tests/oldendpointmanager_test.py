@@ -1,7 +1,7 @@
 import pytest
-from ceptic.endpointmanager import EndpointManager, EndpointClientManager, EndpointServerManager
-from ceptic.endpointmanager import EndpointManagerException
-from ceptic.common import command_settings
+from oldceptic.endpointmanager import EndpointManager, EndpointClientManager, EndpointServerManager
+from oldceptic.endpointmanager import EndpointManagerException
+from oldceptic.common import command_settings
 
 
 # HELPERS:

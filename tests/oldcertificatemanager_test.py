@@ -1,6 +1,6 @@
 import os
 import pytest
-from ceptic.certificatemanager import CertificateManager, CertificateManagerException, create_ssl_config
+from oldceptic.certificatemanager import CertificateManager, CertificateManagerException, create_ssl_config
 
 
 # FIXTURES
