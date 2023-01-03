@@ -1,6 +1,7 @@
 import json
+
 from abc import ABC
-from enum import Enum, StrEnum, IntEnum
+from enum import Enum, IntEnum
 from typing import Union, List
 
 from ceptic.stream import StreamHandler
@@ -72,7 +73,7 @@ class CepticStatusCode(IntEnum):
         return 500 <= status_code <= 599
 
 
-class HeaderType(StrEnum):
+class HeaderType(object):
     CONTENT_LENGTH = "Content-Length"
     CONTENT_TYPE = "Content-Type"
     ENCODING = "Encoding"
