@@ -7,6 +7,10 @@ from typing import Union, List
 from ceptic.stream import StreamHandler
 
 
+class IRemovableManagers(object):
+    pass
+
+
 class Constants(object):
     DEFAULT_PORT = 9000
     COMMAND_LENGTH = 128
@@ -15,14 +19,14 @@ class Constants(object):
 
 class CepticException(Exception):
     """
-    General Ceptic-related exception class
+    General Ceptic-related exception class.
     """
     pass
 
 
 class CepticRequestVerifyException(CepticException):
     """
-    General Ceptic-related exception class
+    General Ceptic-related exception class.
     """
     pass
 
