@@ -90,7 +90,7 @@ class EncodeHandler(object):
     """
     Encodes and decodes using a series of one or more encoders.
     """
-    def __init__(self, encoders: List[Type[EncodeObject]]) -> None:
+    def __init__(self, encoders: list[Type[EncodeObject]]) -> None:
         self.encoders = encoders
 
     def encode(self, data: bytes) -> bytes:

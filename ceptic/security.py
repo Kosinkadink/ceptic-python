@@ -31,6 +31,7 @@ class SecuritySettings(object):
         self.local_cert: Union[str, None] = None
         self.local_key: Union[str, None] = None
         self.remote_cert: Union[str, None] = None
+        self.remote_certs_path: Union[str, None] = None
         self.verify_remote: bool = True
         self.secure: bool = True
         self._key_password: Union[str, None] = None
@@ -53,12 +54,13 @@ class SecuritySettings(object):
         return settings
 
     @classmethod
-    def client(cls, local_cert: str = None, local_key: str = None, remote_cert: str = None, verify_remote: bool = True)\
-            -> 'SecuritySettings':
+    def client(cls, local_cert: str = None, local_key: str = None, remote_cert: str = None,
+               remote_certs_path: str = None, verify_remote: bool = True) -> 'SecuritySettings':
         settings = cls()
         settings.local_cert = local_cert
         settings.local_key = local_key
         settings.remote_cert = remote_cert
+        settings.remote_certs_path = remote_certs_path
         settings.verify_remote = verify_remote
         return settings
 
@@ -69,17 +71,27 @@ class SecuritySettings(object):
         return settings
 
     @classmethod
-    def server(cls, local_cert: str = None, local_key: str = None, remote_cert: str = None) -> 'SecuritySettings':
+    def server(cls, local_cert: str = None, local_key: str = None, remote_cert: str = None,
+               remote_certs_path: str = None) -> 'SecuritySettings':
         settings = cls()
         settings.local_cert = local_cert
         settings.local_key = local_key
         settings.remote_cert = remote_cert
+        settings.remote_certs_path = remote_certs_path
         return settings
 
 
 class CertificateHelper(object):
     PRIVATE_KEY_REGEX = re.compile(r"-----BEGIN ([A-Z ]+)-----([\s\S]*?)-----END [A-Z ]+-----")
 
+    BEGIN_STRING = "-----BEGIN "
+
     RSA_PRIVATE_KEY = "RSA PRIVATE KEY"
     PRIVATE_KEY = "PRIVATE KEY"
     ENCRYPTED_PRIVATE_KEY = "ENCRYPTED PRIVATE KEY"
+
+    RSA_PUBLIC_KEY = "RSA PUBLIC KEY"
+    PUBLIC_KEY = "PUBLIC KEY"
+    CERTIFICATE_STRING = "CERTIFICATE"
+
+

@@ -1,14 +1,18 @@
+import json
+import traceback
 import uuid
 from collections import deque
 
-from time import time
+from time import time, sleep
 from enum import Enum
+from uuid import UUID
 from threading import Lock, Event, Thread
-from queue import SimpleQueue
-from typing import IO, Generator, Iterable, Union, List, Dict
+from queue import SimpleQueue, Empty as QueueEmptyError
+from typing import IO, Generator, Iterable, Union, List
 
-from ceptic.common import CepticException, CepticResponse, Constants, IRemovableManagers
-from ceptic.encode import EncodeHandler, EncodeNone
+from ceptic.interfaces import IRemovableManagers
+from ceptic.common import CepticException, Constants, CepticHeaders, CepticRequestVerifyException, CepticStatusCode
+from ceptic.encode import EncodeHandler, EncodeNone, EncodeGetter
 from ceptic.net import SocketCeptic, SocketCepticException
 
 
@@ -52,8 +56,8 @@ class StreamFrameType(Enum):
 
     __slots__ = ("byte_value",)
 
-    def __init__(self):
-        self.byte_value = f'{self}'.encode()
+    def __init__(self, *args):
+        self.byte_value = f'{self.value}'.encode()
 
     def __bytes__(self):
         return self.byte_value
@@ -65,8 +69,8 @@ class StreamFrameInfo(Enum):
 
     __slots__ = ("byte_value",)
 
-    def __init__(self):
-        self.byte_value = f'{self}'.encode()
+    def __init__(self, *args):
+        self.byte_value = f'{self.value}'.encode()
 
     def __bytes__(self):
         return self.byte_value
@@ -78,10 +82,12 @@ class StreamFrame(object):
     """
     __slots__ = ("stream_id", "type", "info", "data")
 
-    null_id = uuid.UUID(int=0)
-    zero_data_length = "0000000000000000".encode()
+    NULL_ID = uuid.UUID(int=0)
+    ZERO_DATA_LENGTH = "0000000000000000".encode()
+    PREFIX_SIZE = 38
 
-    def __init__(self, stream_id: uuid.UUID, frame_type: StreamFrameType, frame_info: StreamFrameInfo, data: bytes) \
+    def __init__(self, stream_id: uuid.UUID, frame_type: StreamFrameType, frame_info: StreamFrameInfo,
+                 data: bytes = bytearray()) \
             -> None:
         self.stream_id = stream_id
         self.type = frame_type
@@ -93,7 +99,7 @@ class StreamFrame(object):
         """
         Returns total size of frame: 36 bytes from UUID, 1 byte from type, 1 byte from info, plus data size.
         """
-        return 38 + len(self.data)
+        return self.PREFIX_SIZE + len(self.data)
 
     def encode_data(self, encoder: EncodeHandler) -> None:
         self.data = encoder.encode(self.data)
@@ -115,7 +121,7 @@ class StreamFrame(object):
         if self.data:
             s.send(self.data)
         else:
-            s.send_raw(self.zero_data_length)
+            s.send_raw(self.ZERO_DATA_LENGTH)
 
     @classmethod
     def from_socket(cls, s: SocketCeptic, max_data_length: int) -> 'StreamFrame':
@@ -286,13 +292,32 @@ class StreamSettings(object):
         return self._handler_max_count
 
 
+class StreamData(object):
+    __slots__ = ("response", "data")
+
+    def __init__(self, response: 'CepticResponse' = None, data: bytes = None):
+        self.response = response
+        self.data = data
+
+    def is_response(self) -> bool:
+        return self.response is not None
+
+    def is_data(self) -> bool:
+        return self.data is not None
+
+    def is_empty(self) -> bool:
+        return self.response is None and self.data is None
+
+
 class StreamManager(object):
     """
     Manages streams of data to and from a socket.
     """
-    def __init__(self, s: SocketCeptic, destination: str, settings: StreamSettings, removable: IRemovableManagers,
-                 is_server: bool) -> None:
+
+    def __init__(self, s: SocketCeptic, manager_id: UUID, destination: str, settings: StreamSettings,
+                 removable: IRemovableManagers, is_server: bool) -> None:
         self.s = s
+        self.manager_id = manager_id
         self.destination = destination
         self.settings = settings
         self.removable = removable
@@ -316,7 +341,7 @@ class StreamManager(object):
         self.receive_thread = Thread(target=self.process_received_frames)
         self.receive_thread.daemon = True
         # dict
-        self.streams: Dict[uuid.UUID, StreamHandler] = {}
+        self.streams: dict[uuid.UUID, StreamHandlerInternal] = {}
 
     def start(self) -> None:
         # start timers
@@ -331,6 +356,9 @@ class StreamManager(object):
                 self.stop_reason = reason
             self.should_stop_event.set()
 
+    def is_stopped(self) -> bool:
+        return self.should_stop_event.is_set()
+
     def start_timers(self) -> None:
         self.existence_timer.start()
         self.keep_alive_timer.start()
@@ -344,45 +372,161 @@ class StreamManager(object):
             return len(self.streams) >= self.settings.handler_max_count
         return False
 
-    def create_handler(self, stream_id: uuid.UUID = None) -> bool:
-        handler = StreamHandler(stream_id if stream_id else uuid.uuid4(), self.settings, send)
+    def create_handler(self, stream_id: uuid.UUID = None) -> Union['StreamHandlerInternal', None]:
+        if self.streams.get(stream_id):
+            return None
+        handler = StreamHandlerInternal(stream_id if stream_id else uuid.uuid4(), self.settings, self.send_buffer)
+        self.streams[handler.stream_id] = handler
+        return handler
 
-    def remove_handler(self, handler: 'StreamHandler') -> None:
-        pass
+    def remove_handler(self, handler: 'StreamHandlerInternal') -> None:
+        handler.stop()
+        self.streams.pop(handler.stream_id, None)
+
     # endregion
 
     def process_sent_frames(self) -> None:
-        while not self.should_stop_event.is_set():
-            # iterate through sent frames
-            frame: StreamFrame = self.send_buffer.get(True, self.send_event_timeout)
-            if frame:
-                # if close all frame, send and then immediately stop manager
-                if frame.is_close_all():
-                    # update keep alive; close_all frame about to be sent, so stream must be active
-                    self.update_keep_alive()
-                    try:
-                        frame.send(self.s)
-                    except SocketCepticException as e:
-                        self.stop(reason="{},{}".format(type(e), str(e)))
+        try:
+            while not self.should_stop_event.is_set():
+                # iterate through sent frames
+                try:
+                    frame: Union[StreamFrame, None] = self.send_buffer.get(block=True, timeout=self.send_event_timeout)
+                except QueueEmptyError as e:
+                    frame = None
+                if frame:
+                    # if close all frame, send and then immediately stop manager
+                    if frame.is_close_all():
+                        # update keep alive; close_all frame about to be sent, so stream must be active
+                        self.update_keep_alive()
+                        try:
+                            frame.send(self.s)
+                        except SocketCepticException as e:
+                            self.stop("{},{}".format(type(e), str(e)))
+                            break
+                        self.stop("sending close_all from handler {}".format(frame.stream_id))
                         break
                     # get requesting handler
                     handler = self.streams.get(frame.stream_id)
+                    if handler:
+                        # update keep alive; frame about to be sent from valid handler, so stream must be active
+                        self.update_keep_alive()
+                        # decrement sie of handler's send buffer
+                        handler.decrement_send_buffer(frame)
+                        # try to send frame
+                        try:
+                            frame.send(self.s)
+                        except SocketCepticException as e:
+                            # trigger manager to stop if problem with socket
+                            self.stop("exception while sending frame: {}".format(e))
+                            break
+                        # if sent close frame, close handler
+                        if frame.is_close():
+                            self.remove_handler(handler)
+        except Exception as e:
+            self.stop(f"Exception occurred in process_sent_frames: {type(e)}:\n{traceback.format_exception(e)}")
 
     def process_received_frames(self) -> None:
-        pass
+        try:
+            while not self.should_stop_event.is_set():
+                # try to get frame from socket
+                try:
+                    frame = StreamFrame.from_socket(self.s, self.settings.frame_max_size)
+                except (StreamFrameSizeException, SocketCepticException) as e:
+                    self.stop("exception while receiving frame: {}".format(e))
+                    break
+                # update keep alive timer; just received frame, so connection must be alive
+                self.update_keep_alive()
+                # if keep alive frame, update keep alive on handler and keep processing;
+                # just there to keep connection alive
+                if frame.is_keep_alive():
+                    handler = self.streams.get(frame.stream_id)
+                    if handler:
+                        handler.update_keep_alive()
+                # if handler is to be closed, add frame and remove handler
+                elif frame.is_close():
+                    handler = self.streams.get(frame.stream_id)
+                    try:
+                        if handler:
+                            handler.add_to_read(frame)
+                            self.remove_handler(handler)
+                    except StreamHandlerStoppedException:
+                        continue
+                # if close all, stop manager
+                elif frame.is_close_all():
+                    self.stop("received close_all addressed to handler {}".format(frame.stream_id))
+                    break
+                # if server and header frame, create new handler and pass frame
+                elif self.is_server and frame.is_header():
+                    handler = self.create_handler(frame.stream_id)
+                    # if handler couldn't be created, something is wrong and should stop manager
+                    if not handler:
+                        self.stop("couldn't create handler - possible duplicate for handler {}".format(frame.stream_id))
+                        break
+                    if self.is_handler_limit_reached():
+                        handler.send_close("Handler limit reached")
+                        self.remove_handler(handler)
+                        continue
+                    try:
+                        handler.add_to_read(frame)
+                    except StreamHandlerStoppedException:
+                        continue
+                    # let new thread run removable.handle_new_connection to continue comms with handler
+                    handler_thread = Thread(target=self.removable.handle_new_connection, args=(handler,))
+                    handler_thread.daemon = True
+                    handler_thread.start()
+                else:
+                    # otherwise try to pass frame to appropriate handler
+                    handler = self.streams.get(frame.stream_id)
+                    if handler:
+                        try:
+                            handler.add_to_read(frame)
+                        except StreamHandlerStoppedException:
+                            pass
+        except Exception as e:
+            self.stop(f"Exception occurred in process_received_frames: {type(e)}:\n{traceback.format_exception(e)}")
 
 
 class StreamHandler(object):
-    def __init__(self, stream_id: uuid.UUID, settings: StreamSettings, send_event: Event) -> None:
+    def __init__(self, wrapped: 'StreamHandlerInternal') -> None:
+        self.wrapped = wrapped
+
+    @property
+    def settings(self) -> StreamSettings:
+        return self.wrapped.settings
+
+    @property
+    def stream_id(self) -> uuid.UUID:
+        return self.wrapped.stream_id
+
+    def is_stopped(self) -> bool:
+        return self.wrapped.is_stopped()
+
+    def send(self, data: bytes) -> None:
+        self.wrapped.send_data(data)
+
+    def send_response(self, response: 'CepticResponse') -> None:
+        self.wrapped.send_response(response)
+
+    def send_close(self, data: Union[bytes, str] = bytearray()):
+        self.wrapped.send_close(data)
+
+    def read(self, max_length: int, timeout: float = None) -> StreamData:
+        return self.wrapped.read(max_length=max_length, timeout=timeout)
+
+    def read_raw(self, max_length: int, timeout: float = None) -> bytes:
+        return self.wrapped.read_raw(max_length=max_length, timeout=timeout)
+
+
+class StreamHandlerInternal(object):
+    def __init__(self, stream_id: uuid.UUID, settings: StreamSettings, send_buffer: SimpleQueue) -> None:
         self.stream_id = stream_id
         self.settings = settings
-        self.send_event = send_event
         # event for stopping stream
         self.should_stop_event = Event()
         # event for received frame
         self.read_or_stop_event = Event()
         # deques to store frames
-        self.frames_to_send = deque()
+        self.frames_to_send = send_buffer
         self.frames_to_read = deque()
         # buffer sizes
         self.send_buffer_counter = SafeCounter()
@@ -416,6 +560,9 @@ class StreamHandler(object):
         self.read_buffer_ready_or_stop.set()
         self.should_stop_event.set()
 
+    def set_encode(self, encoding_str: str):
+        self.encoder = EncodeGetter.get(encoding_str)
+
     def is_stopped(self):
         if self.should_stop_event.is_set():
             self.read_or_stop_event.set()
@@ -427,19 +574,17 @@ class StreamHandler(object):
             return True
         return False
 
-    def is_send_buffer_full(self):
+    def update_keep_alive(self):
+        self.keep_alive_timer.update()
+
+    # region Buffer Checks
+    def is_send_buffer_full(self) -> bool:
         return self.send_buffer_counter.value > self.settings.send_buffer_size
 
-    def is_read_buffer_full(self):
+    def is_read_buffer_full(self) -> bool:
         return self.read_buffer_counter.value > self.settings.read_buffer_size
 
-    def is_ready_to_send(self):
-        """
-        Returns if a frame is ready to be sent.
-        """
-        return len(self.frames_to_send) > 0
-
-    def is_ready_to_read(self):
+    def is_ready_to_read(self) -> bool:
         """
         Returns if a frame is ready to be read. Triggers read_or_stop_event if ready.
         """
@@ -448,11 +593,33 @@ class StreamHandler(object):
             self.read_or_stop_event.set()
         return ready
 
-    def send_close(self, data: bytes = bytearray()) -> None:
+    def increment_send_buffer(self, frame: StreamFrame) -> None:
+        self.send_buffer_counter.increment(frame.size)
+
+    def decrement_send_buffer(self, frame: StreamFrame) -> None:
+        self.send_buffer_counter.decrement(frame.size)
+        # potentially flag that send buffer is not full, if currently awaiting event
+        if not self.is_send_buffer_full() and not self.send_buffer_ready_or_stop.is_set():
+            self.send_buffer_ready_or_stop.set()
+
+    def increment_read_buffer(self, frame: StreamFrame) -> None:
+        self.read_buffer_counter.increment(frame.size)
+
+    def decrement_read_buffer(self, frame: StreamFrame) -> None:
+        self.read_buffer_counter.decrement(frame.size)
+        # potentially flag that read buffer is not full, if currently awaiting event
+        if not self.is_read_buffer_full() and not self.read_buffer_ready_or_stop.is_set():
+            self.read_buffer_ready_or_stop.set()
+
+    # endregion
+
+    def send_close(self, data: Union[bytes, str] = bytearray()) -> None:
         """
         Send a close frame with optional data content (not to exceed half of frame size) and stop handler.
         Does not block unless queue full.
         """
+        if isinstance(data, str):
+            data = data.encode()
         try:
             self.send_frame(StreamFrame.create_close(self.stream_id, data))
         except StreamHandlerStoppedException:
@@ -468,7 +635,7 @@ class StreamHandler(object):
         self.keep_alive_timer.update()
         frame.encode_data(self.encoder)
         # check if enough room in buffer
-        self.send_buffer_counter.increment(frame.size)
+        self.increment_send_buffer(frame)
         if self.is_send_buffer_full():
             # wait until buffer is decreased enough to fit new frame
             self.send_buffer_ready_or_stop.clear()
@@ -476,8 +643,7 @@ class StreamHandler(object):
                 ready = self.send_buffer_ready_or_stop.wait(self.buffer_wait_timeout)
                 if ready:
                     break
-        self.frames_to_send.append(frame)
-        self.send_event.set()
+        self.frames_to_send.put(frame)
 
     def send_frames(self, frames: Iterable) -> None:
         """
@@ -486,6 +652,13 @@ class StreamHandler(object):
         for frame in frames:
             self.send_frame(frame)
 
+    def send_data(self, data: bytes) -> None:
+        """
+        Send all data - will use a generator to iterate through the data and sends StreamFrames. Does not block unless
+        queue full.
+        """
+        self.send(data)
+
     def send(self, data: bytes, is_first_header: bool = False, is_response: bool = False) -> None:
         """
         Send all data - will use a generator to iterate through the data and sends StreamFrames. Does not block unless
@@ -493,7 +666,13 @@ class StreamHandler(object):
         """
         self.send_frames(self.stream_frame_gen.from_data(data, is_first_header, is_response))
 
-    def send_response(self, response: CepticResponse) -> None:
+    def send_request(self, request: 'CepticRequest') -> None:
+        """
+        Send request as data converted into StreamFrames added to send buffer.
+        """
+        self.send(request.get_data(), is_first_header=True)
+
+    def send_response(self, response: 'CepticResponse') -> None:
         """
         Send CepticResponse object. Does not block.
         """
@@ -512,7 +691,7 @@ class StreamHandler(object):
         """
         self.keep_alive_timer.update()
         # check if enough room in buffer
-        self.read_buffer_counter.increment(frame.size)  # TODO: review this order of actions
+        self.increment_read_buffer(frame)  # TODO: review this order of actions
         if self.is_read_buffer_full():
             # wait until buffer is decreased enough to fit new frame
             self.read_buffer_ready_or_stop.clear()
@@ -556,7 +735,7 @@ class StreamHandler(object):
             raise StreamClosedException(frame.data.decode())
         return frame
 
-    def read_full_data(self, timeout: float, max_length: int, convert_response: bool) -> Union[bytes, CepticResponse]:
+    def read_full_data(self, timeout: float, max_length: int, convert_response: bool) -> StreamData:
         """
         Returns combined data (if applicable) for continued frames until an end frame is encountered,
         or a CepticResponse instance
@@ -565,6 +744,8 @@ class StreamHandler(object):
         :param convert_response: if true (default), will convert data to CepticResponse
         if any frames encountered are of type RESPONSE
         """
+        if timeout is None:
+            timeout = self.settings.stream_timeout
         frames = []
         total_length = 0
         frame_generator = self.generate_next_frame(timeout)
@@ -584,24 +765,36 @@ class StreamHandler(object):
         # combine data
         full_data = bytes().join(frames)
         if convert_response and is_response:
-            return CepticResponse.from_data(full_data)
-        return full_data
+            return StreamData(response=CepticResponse.from_data(full_data))
+        return StreamData(data=full_data)
 
-    def read_header_data(self, timeout: float) -> bytes:
+    def read_header_data(self, timeout: float = None) -> StreamData:
         # length should be no more than: headers max size + command + endpoint + 2x\r\n (4 bytes)
         return self.read_full_data(timeout, self.settings.headers_max_size + Constants.COMMAND_LENGTH
                                    + Constants.ENDPOINT_LENGTH + 4, False)
 
-    def read(self, timeout: float = None, max_length: int = None) -> Union[bytes, CepticResponse]:
+    def read(self, max_length: int, timeout: float = None) -> StreamData:
         """
         Returns combined data (if applicable) for continued frames until an end frame is encountered,
         or a CepticResponse instance
         :param timeout: optional timeout time (uses stream_timeout setting by default)
         :param max_length: optional max length; allows throwing StreamTotalDataSizeException if exceeds limit
         """
+        if timeout is None:
+            timeout = self.settings.stream_timeout
         return self.read_full_data(timeout, max_length, convert_response=True)
 
-    def read_full_frames(self, timeout: float = None, max_length: int = None) -> List[StreamFrame]:
+    def read_raw(self, max_length: int, timeout: float = None) -> bytes:
+        """
+        Returns raw data for continued frames until an end frame is encountered
+        :param timeout: optional timeout time (uses stream_timeout setting by default)
+        :param max_length: optional max length; allows throwing StreamTotalDataSizeException if exceeds limit
+        """
+        if timeout is None:
+            timeout = self.settings.stream_timeout
+        return self.read_full_data(timeout, max_length, convert_response=False).data
+
+    def read_full_frames(self, timeout: float = None, max_length: int = None) -> list[StreamFrame]:
         """
         Returns list of frames (if applicable) for continued frames until an end frame is encountered
         """
@@ -662,25 +855,8 @@ class StreamHandler(object):
     def generate_next_full_frames(self, timeout: float = None, max_length: int = None) -> Generator:
         while True:
             yield self.read_full_frames(timeout, max_length)
-    # endregion
 
-    def get_ready_to_send(self) -> Union[StreamFrame, None]:
-        """
-        Return latest frame to send; pops frame id from frames to send deque.
-        """
-        frame: Union[StreamFrame, None] = None
-        try:
-            frame = self.frames_to_send.popleft()
-            return frame
-        except IndexError:
-            return None
-        finally:
-            # if frame was taken from deque, decrement deque size
-            if frame:
-                self.send_buffer_counter.decrement(frame.size)
-                # potentially flag that send buffer is not full, if currently awaiting event
-                if not self.is_send_buffer_full() and not self.send_buffer_ready_or_stop.is_set():
-                    self.send_buffer_ready_or_stop.set()
+    # endregion
 
     def get_ready_to_read(self) -> Union[StreamFrame, None]:
         """
@@ -695,16 +871,13 @@ class StreamHandler(object):
         finally:
             # if frame was taken from queue, decrement deque size
             if frame:
-                self.read_buffer_counter.decrement(frame.size)
-                # potentially flag that send buffer is not full, if currently awaiting event
-                if not self.is_read_buffer_full() and not self.read_buffer_ready_or_stop.is_set():
-                    self.read_buffer_ready_or_stop.set()
+                self.decrement_read_buffer(frame)
 
 
 class StreamFrameGen(object):
     __slots__ = ("stream", "_frame_size")
 
-    def __init__(self, stream: StreamHandler):
+    def __init__(self, stream: StreamHandlerInternal):
         self.stream = stream
         self._frame_size = 0
         self.frame_size = self.stream.settings.frame_max_size // 2
@@ -715,7 +888,7 @@ class StreamFrameGen(object):
 
     @frame_size.setter
     def frame_size(self, size: int) -> None:
-        self.frame_size = size
+        self._frame_size = size
 
     @property
     def stream_id(self) -> uuid.UUID:
@@ -777,6 +950,128 @@ class StreamFrameGen(object):
             yield StreamFrame.create_data_continued(self.stream_id, current_chunk)
             # next chunk becomes current chunk
             current_chunk = next_chunk
+
+
+class CepticRequest(CepticHeaders):
+    def __init__(self, command: str, url: str, body: bytes = None, headers: dict = None) -> None:
+        super().__init__(headers)
+        self.command = command
+        self.url = url
+        self.endpoint = ""
+        self.body = body
+        self.stream: Union[StreamHandler, None] = None
+        self.host = ""
+        self.port = Constants.DEFAULT_PORT
+        self.values: Union[dict[str, str], None] = None
+        self.queryparams: Union[dict[str, str], None] = None
+        self.querystring: str = ""
+
+    @staticmethod
+    def create_with_endpoint(command: str, endpoint: str, body: bytes = None, headers: dict = None) -> 'CepticRequest':
+        request = CepticRequest(command, "", body, headers=headers)
+        request.endpoint = endpoint
+        return request
+
+    @property
+    def body(self) -> bytearray:
+        return self._body
+
+    @body.setter
+    def body(self, value: bytes):
+        if not value:
+            value = bytearray()
+        else:
+            self.content_length = len(value)
+        self._body = value
+
+    def verify_and_prepare(self) -> None:
+        # check that command isn't empty
+        if not self.command:
+            raise CepticRequestVerifyException("Command cannot be empty.")
+        # check that url isn't empty
+        if not self.url:
+            raise CepticRequestVerifyException("Url cannot be empty.")
+        # don't redo verification is already satisfied
+        if self.host and self.endpoint:
+            return
+        # extract request components from url
+        components = self.url.split("/", 1)
+        # set endpoint
+        if len(components) < 2 or not components[1]:
+            self.endpoint = "/"
+        else:
+            self.endpoint = components[1]
+        # extract host and port from first component
+        elements = components[0].split(":", 1)
+        self.host = elements[0]
+        if len(elements) > 1:
+            try:
+                self.port = int(elements[1])
+            except ValueError as e:
+                raise CepticRequestVerifyException(f"Port must be an integer, not {elements[1]}.") from e
+
+    def get_data(self) -> bytes:
+        return f"{self.command}\r\n{self.endpoint}\r\n{json.dumps(self.headers)}".encode()
+
+    @classmethod
+    def from_data(cls, data: bytes) -> 'CepticRequest':
+        command, endpoint, json_headers = data.decode().split("\r\n")
+        return cls.create_with_endpoint(command, endpoint, headers=json.loads(json_headers))
+
+    def begin_exchange(self) -> Union[StreamHandler, None]:
+        response = CepticResponse(CepticStatusCode.EXCHANGE_START)
+        response.exchange = True
+        if self.stream and not self.stream.is_stopped():
+            try:
+                if not self.exchange:
+                    self.stream.send_response(CepticResponse(CepticStatusCode.MISSING_EXCHANGE))
+                    if self.stream.settings.verbose:
+                        print("Request did not have required Exchange header")
+                    return None
+                self.stream.send_response(response)
+            except StreamException as e:
+                if self.stream.settings.verbose:
+                    print(f"StreamException {type(e)} while trying to begin_exchange: {e}")
+                return None
+            return self.stream
+        return None
+
+
+class CepticResponse(CepticHeaders):
+    def __init__(self, status: Union[CepticStatusCode, int],
+                 body: Union[bytes, None] = None, headers: Union[dict, None] = None,
+                 errors: Union[List, None] = None, stream: Union[StreamHandler, None] = None) -> None:
+        super().__init__(headers)
+        self.status = status
+        self.body = body
+        if errors:
+            self.errors = errors
+        self.stream = stream
+
+    @property
+    def body(self) -> bytearray:
+        return self._body
+
+    @body.setter
+    def body(self, value: bytes):
+        if not value:
+            value = bytearray()
+        else:
+            self.content_length = len(value)
+        self._body = value
+
+    def get_data(self) -> bytes:
+        return f"{self.status}\r\n{json.dumps(self.headers)}".encode()
+
+    @classmethod
+    def from_data(cls, data: bytes) -> 'CepticResponse':
+        status, json_headers = data.decode().split("\r\n")
+        if json_headers:
+            return cls(int(status), headers=json.loads(json_headers))
+        return cls(status)
+
+    def __str__(self):
+        return f"{self.status},{self.headers},{self.body}"
 
 
 class Timer(object):

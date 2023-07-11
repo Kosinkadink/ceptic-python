@@ -25,7 +25,7 @@ class SocketCeptic(object):
     def send_raw(self, msg: bytes) -> None:
         """
         Send message without prefix.
-        :param msg: string or bytes to send
+        :param msg: bytes to send
         :raises SocketCepticException: when socket is unexpectedly closed.
         """
         sent = 0
@@ -35,18 +35,31 @@ class SocketCeptic(object):
             except ConnectionResetError as e:
                 raise SocketCepticException("Connection was closed: {}".format(str(e))) from e
 
-    def send(self, msg: Union[bytes, str]) -> None:
+    def send_raw_str(self, msg: str) -> None:
         """
-        Send message, prefixed by a 16-byte length.
-        :param msg: string or bytes to send
+        Send message without prefix.
+        :param msg: string to send
         :raises SocketCepticException: when socket is unexpectedly closed.
         """
-        # convert to bytes, if is a string
-        if isinstance(msg, str):
-            msg = msg.encode()
+        return self.send_raw(msg.encode())
+
+    def send(self, msg: bytes) -> None:
+        """
+        Send message, prefixed by a 16-byte length.
+        :param msg: bytes to send
+        :raises SocketCepticException: when socket is unexpectedly closed.
+        """
         total_size = format(len(msg), ">16").encode()
         self.send_raw(total_size)
         self.send_raw(msg)
+
+    def send_str(self, msg: str) -> None:
+        """
+        Send message, prefixed by a 16-byte length.
+        :param msg: str to send
+        :raises SocketCepticException: when socket is unexpectedly closed.
+        """
+        self.send(msg.encode())
     # endregion
 
     # region Receive
@@ -77,7 +90,7 @@ class SocketCeptic(object):
         :param length: length of string to receive
         :raises SocketCepticException: when socket is unexpectedly closed or EOF
         """
-        return str(self.recv_raw(length))
+        return self.recv_raw(length).decode()
 
     def recv_bytes(self, max_length: int) -> bytes:
         """
@@ -99,7 +112,7 @@ class SocketCeptic(object):
         :param max_length: maximum length of byte array expected from sender
         :raises SocketCepticException: when socket is unexpectedly closed or EOF
         """
-        return str(self.recv_bytes(max_length))
+        return self.recv_bytes(max_length).decode()
     # endregion
 
     def close(self) -> None:
@@ -110,7 +123,7 @@ class SocketCeptic(object):
 
 
 def select(read_list: Iterable[SocketCeptic], write_list: Iterable[SocketCeptic], error_list: Iterable[SocketCeptic],
-           timeout: Union[float, None]) -> Tuple[List[SocketCeptic], List[SocketCeptic], List[SocketCeptic]]:
+           timeout: Union[float, None]) -> Tuple[list[SocketCeptic], list[SocketCeptic], list[SocketCeptic]]:
     """
     Wraps select.select for use with SocketCeptic instances. See select.select documentation for full expected behavior.
     :param read_list: wait until ready for reading

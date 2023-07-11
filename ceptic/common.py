@@ -1,14 +1,5 @@
-import json
-
-from abc import ABC
 from enum import Enum, IntEnum
 from typing import Union, List
-
-from ceptic.stream import StreamHandler
-
-
-class IRemovableManagers(object):
-    pass
 
 
 class Constants(object):
@@ -18,6 +9,13 @@ class Constants(object):
 
 
 class CepticException(Exception):
+    """
+    General Ceptic-related exception class.
+    """
+    pass
+
+
+class CepticIOException(CepticException):
     """
     General Ceptic-related exception class.
     """
@@ -92,7 +90,7 @@ class SpreadType(Enum):
     STANDALONE = 2
 
 
-class CepticHeaders(ABC):
+class CepticHeaders(object):
     def __init__(self, headers: Union[dict, None]) -> None:
         self.headers = headers
         if not self.headers:
@@ -173,105 +171,3 @@ class CepticHeaders(ABC):
     def files(self, value: Union[List, None]) -> None:
         self.headers[HeaderType.FILES] = value
     # endregion
-
-
-class CepticRequest(CepticHeaders):
-    def __init__(self, command: str, url: str, body: bytes = None, headers: dict = None) -> None:
-        super().__init__(headers)
-        self.command = command
-        self.url = url
-        self.endpoint = ""
-        self.body = body
-        self.stream = None
-        self.host = ""
-        self.port = Constants.DEFAULT_PORT
-
-    @staticmethod
-    def create_with_endpoint(command: str, endpoint: str, body: bytes = None, headers: dict = None) -> 'CepticRequest':
-        request = CepticRequest(command, "", body, headers)
-        request.endpoint = endpoint
-        return request
-
-    @property
-    def body(self) -> bytearray:
-        return self._body
-
-    @body.setter
-    def body(self, value: bytes):
-        if not value:
-            value = bytearray()
-        self._body = value
-        self.content_length = len(value)
-
-    def verify_and_prepare(self) -> None:
-        # check that command isn't empty
-        if not self.command:
-            raise CepticRequestVerifyException("Command cannot be empty.")
-        # check that url isn't empty
-        if not self.url:
-            raise CepticRequestVerifyException("Url cannot be empty.")
-        # don't redo verification is already satisfied
-        if self.host and self.endpoint:
-            return
-        # extract request components from url
-        components = self.url.split("/", 2)
-        # set endpoint
-        if len(components) < 2 or not components[1]:
-            self.endpoint = "/"
-        else:
-            self.endpoint = components[1]
-        # extract host and port from first component
-        elements = components[0].split(":", 2)
-        self.host = elements[0]
-        if len(elements) > 1:
-            try:
-                self.port = int(elements[1])
-            except ValueError as e:
-                raise CepticRequestVerifyException(f"Port must be an integer, not {elements[1]}.") from e
-
-    def get_data(self) -> bytes:
-        return f"{self.command}\r\n{self.endpoint}\r\n{json.dumps(self.headers)}".encode()
-
-    @classmethod
-    def from_data(cls, data: bytes) -> 'CepticRequest':
-        command, endpoint, json_headers = data.decode().split("\r\n")
-        return cls.create_with_endpoint(command, endpoint, headers=json_headers)
-
-    def begin_exchange(self) -> Union[StreamHandler, None]:
-        response = CepticResponse(CepticStatusCode.EXCHANGE_START)
-        response.exchange = True
-        # TODO: fill this out once StreamHandler implementation is more complete
-        if not self.exchange:
-            pass
-        return None
-
-
-class CepticResponse(CepticHeaders):
-    def __init__(self, status: int, body: Union[bytes, None] = None, headers: Union[dict, None] = None,
-                 errors: Union[List, None] = None, stream: Union[StreamHandler, None] = None) -> None:
-        super().__init__(headers)
-        self.status = status
-        self.body = body
-        self.errors = errors
-        self.stream = stream
-
-    @property
-    def body(self) -> bytearray:
-        return self._body
-
-    @body.setter
-    def body(self, value: bytes):
-        if not value:
-            value = bytearray()
-        self._body = value
-        self.content_length = len(value)
-
-    def get_data(self) -> bytes:
-        return f"{self.status}\r\n{json.dumps(self.headers)}".encode()
-
-    @classmethod
-    def from_data(cls, data: bytes) -> 'CepticResponse':
-        status, json_headers = data.decode().split("\r\n")
-        if json_headers:
-            return cls(status, headers=json.loads(json_headers))
-        return cls(status)
