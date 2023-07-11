@@ -22,13 +22,12 @@ Clients must have the following in their certification directory:
 	key_client.pem
 	cert_client.pem
 
-Do not include server's key in clients, and try to avoid including
+Do not include server's key in clients, and avoid including
 the clients' keys in servers.
 
 
 The meanings of some values of the openssl commands:
-	- rsa:4096 is the size of the key in bits. Feel free to make it
-	  smaller (ie 2048), but it's less cool
+	- rsa:4096 is the size of the key in bits.
 	- 365 specifies how long the certificate will be valid for.
-	  Replace it after it expires though.
+	  Replace it after it expires.
 

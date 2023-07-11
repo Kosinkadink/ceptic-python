@@ -1,6 +1,6 @@
 import os
 import pytest
-from ceptic.server import CepticServer, server_settings, basic_server_command
+from oldceptic.server import CepticServer, server_settings, basic_server_command
 
 
 # FIXTURES

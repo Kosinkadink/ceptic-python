@@ -6,7 +6,7 @@ setup(
     name='ceptic',
     version=ceptic_version,
     packages=['ceptic'],
-    url='https://github.com/kosinkadink/ceptic',
+    url='https://github.com/kosinkadink/ceptic-python',
     license='MIT',
     author='Jedrzej Kosinski',
     author_email='kosinkadink1@gmail.com',

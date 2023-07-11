@@ -1,459 +1,356 @@
-import json
+import ssl
 import socket
-import copy
 import uuid
-import threading
+from typing import Union, List
+from uuid import UUID
 
-from ceptic.network import SocketCeptic
-from ceptic.common import CepticResponse, CepticRequest, CepticException
-from ceptic.common import CepticStatusCode, command_settings
-from ceptic.endpointmanager import EndpointManager
-from ceptic.certificatemanager import CertificateManager, CertificateManagerException, create_ssl_config
-from ceptic.streammanager import StreamManager, StreamClosedException, StreamException, StreamTotalDataSizeException
-from ceptic.encode import EncodeGetter
-
-
-def client_settings(version="1.0.0",
-                    headers_min_size=1024000, headers_max_size=1024000,
-                    frame_min_size=1024000, frame_max_size=1024000,
-                    body_max=102400000,
-                    stream_min_timeout=1, stream_timeout=5,
-                    send_buffer_size=102400000, read_buffer_size=102400000):
-    settings = {
-        "version": str(version),
-        "headers_min_size": int(headers_min_size),
-        "headers_max_size": int(headers_max_size),
-        "frame_min_size": int(frame_min_size),
-        "frame_max_size": int(frame_max_size),
-        "body_max": int(body_max),
-        "stream_min_timeout": int(stream_min_timeout),
-        "stream_timeout": int(stream_timeout),
-        "send_buffer_size": int(send_buffer_size),
-        "read_buffer_size": int(read_buffer_size),
-        "default_port": 9000
-    }
-    if settings["frame_min_size"] > settings["frame_max_size"]:
-        settings["frame_min_size"] = settings["frame_max_size"]
-    if settings["frame_min_size"] < 1000:
-        raise ValueError("frame_min_size must be at least 1000; was {}".format(settings["frame_min_size"]))
-    if settings["send_buffer_size"] < settings["frame_max_size"] + 38 or \
-            settings["read_buffer_size"] < settings["frame_max_size"] + 38:
-        raise ValueError("send and read buffer size must be greater than "
-                         "frame_max_size+38 ({}); were {} and {}".format(settings["frame_max_size"] + 38,
-                                                                         settings["send_buffer_size"],
-                                                                         settings["read_buffer_size"]))
-    return settings
+from ceptic.common import Constants, SpreadType, CepticException, CepticIOException, CepticStatusCode
+from ceptic.net import SocketCeptic
+from ceptic.security import SecuritySettings
+from ceptic.stream import StreamFrame, StreamHandlerInternal, CepticRequest, CepticResponse, StreamManager, \
+    StreamSettings, \
+    StreamException, StreamHandler
+from ceptic.interfaces import IRemovableManagers
 
 
-def basic_client_command(stream, request):
-    # send body if content length header present
-    if request.content_length:
-        # TODO: Add file transfer functionality
-        try:
-            stream.send_data(request.body)
-        except StreamClosedException:
-            return CepticResponse(CepticStatusCode.LOCAL_ERROR, errors="stream closed while sending body")
-        except StreamException as e:
-            stream.send_close()
-            return CepticResponse(CepticStatusCode.LOCAL_ERROR, errors="StreamException: {}".format(str(e)))
-    # get response
-    try:
-        response_data = stream.get_full_data(max_length=stream.frame_size)
-    except StreamClosedException as e:
-        return CepticResponse(CepticStatusCode.LOCAL_ERROR, errors=str(e))
-    response = CepticResponse.from_data(response_data)
-    response.stream = stream
-    response.settings = request.settings
-    # if content length header present, receive response body
-    if response.content_length:
-        # TODO: Add file transfer functionality
-        # check that content length is within limit
-        if response.content_length > response.max_content_length:
-            error_msg = "response content_length ({}) is longer than client allows ({})".format(
-                response.content_length,
-                response.max_content_length)
-            stream.send_close(error_msg)
-            return CepticResponse(CepticStatusCode.LOCAL_ERROR, errors=error_msg)
-        try:
-            response.body = stream.get_full_data(max_length=response.content_length)
-        except StreamTotalDataSizeException:
-            stream.send_close("body received is greater than reported content_length")
-            response = CepticResponse(CepticStatusCode.LOCAL_ERROR, errors="body received is greater than reported content_length; body ignored")
-        except StreamException as e:
-            stream.send_close()
-            response = CepticResponse(
-                CepticStatusCode.LOCAL_ERROR,
-                errors="StreamException type ({}) thrown while receiving response body: {}".format(type(e), str(e))
-            )
-    # return response
-    return response
+class ClientSettings(object):
+    def __init__(self,
+                 version: str = "1.0.0",
+                 headers_min_size: int = 1024000, headers_max_size: int = 1024000,
+                 frame_min_size: int = 1024000, frame_max_size: int = 1024000,
+                 body_max: int = 102400000,
+                 stream_min_timeout: int = 1, stream_timeout: int = 5,
+                 read_buffer_size: int = 102400000, send_buffer_size: int = 102400000,
+                 default_port: int = Constants.DEFAULT_PORT):
+        self._version = version
+        self._headers_min_size = headers_min_size
+        self._headers_max_size = headers_max_size
+        self._frame_min_size = frame_min_size if frame_min_size < frame_max_size else frame_max_size
+        self._frame_max_size = frame_max_size
+        if self._frame_min_size < 1000:
+            raise ValueError("frame_min_size must be at least 1000; was {}.".format(self._frame_min_size))
+        self._body_max = body_max
+        self._stream_min_timeout = stream_min_timeout
+        self._stream_timeout = stream_timeout
+        if send_buffer_size < frame_max_size + StreamFrame.PREFIX_SIZE or \
+                read_buffer_size < frame_max_size + StreamFrame.PREFIX_SIZE:
+            raise ValueError("send and read buffer sizes must be greater than "
+                             "frame_max_size+{} ({}); were {} and {}.".format(StreamFrame.PREFIX_SIZE,
+                                                                              frame_max_size + StreamFrame.PREFIX_SIZE,
+                                                                              send_buffer_size, read_buffer_size))
+        self._send_buffer_size = send_buffer_size
+        self._read_buffer_size = read_buffer_size
+        self._default_port = default_port
+
+    @property
+    def version(self) -> str:
+        return self._version
+
+    @property
+    def headers_min_size(self) -> int:
+        return self._headers_min_size
+
+    @property
+    def headers_max_size(self) -> int:
+        return self._headers_max_size
+
+    @property
+    def frame_min_size(self) -> int:
+        return self._frame_min_size
+
+    @property
+    def frame_max_size(self) -> int:
+        return self._frame_max_size
+
+    @property
+    def body_max(self) -> int:
+        return self._body_max
+
+    @property
+    def stream_min_timeout(self) -> int:
+        return self._stream_min_timeout
+
+    @property
+    def stream_timeout(self) -> int:
+        return self._stream_timeout
+
+    @property
+    def read_buffer_size(self) -> int:
+        return self._read_buffer_size
+
+    @property
+    def send_buffer_size(self) -> int:
+        return self._send_buffer_size
+
+    @property
+    def default_port(self) -> int:
+        return self._default_port
 
 
-class CepticClient(object):
+class CepticClient(IRemovableManagers):
+    def __init__(self, settings: ClientSettings = None, security: SecuritySettings = None):
+        super()
+        self.managers: dict[UUID, StreamManager] = dict()
+        self.destination_map: dict[str, set[UUID]] = dict()
+        self.settings = settings if settings else ClientSettings()
+        self.security = security if security else SecuritySettings.client()
+        self.ssl_context: Union[ssl.SSLContext, None] = None
+        self.setup_security()
 
-    def __init__(self, settings=None, certfile=None, keyfile=None, cafile=None, check_hostname=True, secure=True):
+    # region Security
+    def setup_security(self) -> None:
         """
-        General purpose Ceptic client
-        :param settings: dict generated by client_settings
-        :param certfile: optional client public key file (certificate) for client verification
-        :param keyfile: optional client private key file for client verification
-        :param cafile: optional server public key file (certificate) for servers with certificates that are not verified
-                       by default OS root certificates (i.e. self-signed)
-        :param check_hostname: toggles if hostnames for certificates should be checked (default: True); turn to False
-                               for self-signed certificates
-        :param secure: toggles if certificates/encryption should be used (default: True); recommended to be kept True
-                       except for specific development purposes
+        Sets up security for CepticClient, or throws SecurityException if something is misconfigured in provided
+        SecuritySettings.
+        Returns
+        -------
+        None
         """
-        if not settings:
-            self.settings = client_settings()
+        if not self.security.secure:
+            return
+        # if ssl_context exists on security settings, use it
+        if self.security.ssl_context:
+            self.ssl_context = self.security.ssl_context
+            return
+        # otherwise, create default secure settings and customize them if needed
+        ssl_context: ssl.SSLContext = ssl.create_default_context()
+        # if local_cert present, attempt to load client cert and key
+        if self.security.local_cert:
+            ssl_context.load_cert_chain(certfile=self.security.local_cert, keyfile=self.security.local_key,
+                                        password=self.security.key_password)
+        # if remote_cert present, attempt to load server cert
+        if self.security.remote_cert or self.security.remote_certs_path:
+            ssl_context.load_verify_locations(cafile=self.security.remote_cert,
+                                              capath=self.security.remote_certs_path)
+        ssl_context.check_hostname = self.security.verify_remote
+        self.ssl_context = ssl_context
+
+    @property
+    def verify_remote(self):
+        return self.security.verify_remote
+
+    @property
+    def secure(self):
+        return self.security.secure
+    # endregion
+
+    # region Connection
+    def connect(self, request: CepticRequest, spread: SpreadType = SpreadType.NORMAL) -> CepticResponse:
+        # verify and prepare request
+        request.verify_and_prepare()
+        # create destination based off of host and port
+        destination = f"{request.host}:{request.port}"
+
+        manager: StreamManager
+        handler: StreamHandlerInternal
+        # if normal, check if a manager is available for destination
+        if spread == SpreadType.NORMAL:
+            manager = self.get_available_manager_for_destination(destination)
+            if manager:
+                handler = manager.create_handler()
+                # connect to server with this handler, returning CepticResponse
+                return self.connect_with_handler(handler, request)
+        # else if standalone, make stored destination be random UUID to avoid reuse
         else:
-            self.settings = settings
-        self.shouldStop = threading.Event()
-        self.isDoneRunning = threading.Event()
-        # set up endpoint manager
-        self.endpointManager = EndpointManager.client()
-        # set up certificate manager
-        ssl_config = create_ssl_config(certfile=certfile, keyfile=keyfile, cafile=cafile,
-                                       check_hostname=check_hostname, secure=secure)
-        self.certificateManager = CertificateManager.client(ssl_config=ssl_config)
-        # create StreamManager dictionary
-        self.managerDict = {}
-        # do initialization
-        self.initialize()
+            destination += str(uuid.uuid4())
+        # create new manager
+        manager = self.create_new_manager(request, destination)
+        handler = manager.create_handler()
+        # connect to server with this handler, returning CepticResponse
+        return self.connect_with_handler(handler, request)
 
-    def initialize(self):
-        """
-        Initialize client configuration and processes
-        :return: None
-        """
-        # set up certificateManager context
-        self.certificateManager.generate_context_tls()
-        # add get command
-        self.add_command("get")
-        # add post command
-        self.add_command("post")
-        # add update command
-        self.add_command("update")
-        # add delete command
-        self.add_command("delete")
+    def connect_standalone(self, request: CepticRequest) -> CepticResponse:
+        return self.connect(request, spread=SpreadType.STANDALONE)
 
-    def add_command(self, command):
-        """
-        Add command name to endpoint manager; registers as a basic_client_command
-        :param command: string command name
-        :return: None
-        """
-        self.endpointManager.add_command(
-            str(command),
-            basic_client_command,
-            command_settings(body_max=self.settings["body_max"])
-        )
-
-    def verify_request(self, request):
-        """
-        Check that request is valid; raises a ValueError with reason if invalid
-        :param request: CepticRequest instance
-        :return: None
-        """
-        # verify command is of proper length and exists in endpoint manager
-        if not request.command:
-            raise ValueError("command must be provided")
-        if len(request.command) > 128:
-            raise ValueError("command must be less than 128 char long")
-        if not self.endpointManager.get_command(request.command):
-            raise ValueError("command '{}' cannot be found in endpoint manager".format(request.command))
-        # verify endpoint is of proper length
-        if not request.endpoint:
-            raise ValueError("endpoint must be provided")
-        if len(request.endpoint) > 128:
-            raise ValueError("endpoint must be less than 128 char long")
-        # verify command, endpoint, headers together are of proper length
-        json_headers = json.dumps(request.headers)
-        if len(json_headers) > self.settings["headers_max_size"]:
-            raise ValueError("json headers are {} chars too long; max size is {}".format(
-                len(json_headers) - self.settings["headers_max_size"],
-                self.settings["headers_max_size"]))
-        # verify encoding header
-        if request.encoding:
-            valid, error = EncodeGetter.check(request.encoding)
-            if not valid:
-                raise ValueError("encoding header not valid; {}".format(error))
-
-    def connect_ip(self, host, port, command, endpoint, headers, body=None, settings=None, force_new_stream=False,
-                   request=None):
-        """
-        Connect to ceptic server at given ip
-        :param host: string of ip address (ipv4)
-        :param port: int corresponding to port
-        :param command: string command type of request
-        :param endpoint: string endpoint value
-        :param headers: dict containing headers
-        :param body: optional parameter containing body of request
-        :param settings: optional dict parameter (should be created using command_settings)
-        :param force_new_stream: optional boolean (default False) to guarantee new StreamManager creation
-        :param request: optional request object to substitute for other parameters
-        :return: CepticResponse instance
-        """
-        # verify args
+    def connect_with_handler(self, stream: StreamHandlerInternal, request: CepticRequest) -> CepticResponse:
         try:
-            # create request if one not passed in
-            if not request:
-                request = CepticRequest(command=command, endpoint=endpoint, headers=headers, body=body,
-                                        settings=settings)
-            self.verify_request(request)
-        except ValueError as e:
-            raise CepticException(e)
-        # if a stream manager does not exist for this host/port combo, open one
-        name = str((host, port))
-        if force_new_stream or self.is_manager_full(name):
-            name = str(uuid.uuid4())
-        if not self.get_manager(name):
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            # s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-            s.settimeout(5)
-            # enable socket blocking
-            s.setblocking(True)
-            try:
-                s.connect((host, port))
-            except TypeError:
-                s.close()
-                raise CepticException("host must be string ({}), port must be int ({})".format(host, port))
-            except Exception:
-                s.close()
-                raise CepticException("Server at {}:{} not available".format(host, port))
-            try:
-                self.create_new_manager(s, name)
-            except CepticException as e:
-                s.close()
-                raise CepticException("Ceptic handshake failed with server: {}".format(str(e)))
-        # use existing manager to start new stream
-        manager = self.get_manager(name)
-        handler = manager.get_handler(manager.create_handler())
-        return self.connect_protocol_client(handler, request)
-
-    def connect_url(self, url, command, headers=None, body=None, settings=None, force_new_stream=False):
-        """
-        Connect to ceptic server at given url
-        :param url: string in format of ip[:port]/endpoint
-        :param command: string command type of request
-        :param headers: dict containing headers
-        :param body: optional parameter containing body of request
-        :param settings: optional dict parameter (should be created using command_settings)
-        :param force_new_stream: optional boolean (default False) to guarantee new StreamManager creation
-        :return: CepticResponse instance
-        """
-        try:
-            host, port, endpoint = self.get_details_from_url(url)
-            return self.connect_ip(host, port, command, endpoint, headers, body, settings, force_new_stream)
-        except ValueError as e:
-            raise e
-        except IndexError as e:
-            raise e
-
-    def connect_request(self, request, force_new_stream=False):
-        """
-        Connect to ceptic server using filled-out request
-        :param request: CepticRequest object
-        :param force_new_stream: optional boolean (default False) to guarantee new StreamManager creation
-        :return: CepticResponse instance
-        """
-        return self.connect_ip(None, None, None, None, None, request=request, force_new_stream=force_new_stream)
-
-    def get_details_from_url(self, url):
-        """
-        Return host, port, endpoint tuple from url string
-        :param url: string url
-        :return: tuple containing host, port, endpoint
-        """
-        endpoint = ""
-        host_port_and_endpoint = url.strip().split("/", 1)
-        host_and_port = host_port_and_endpoint[0]
-        if len(host_port_and_endpoint) > 1:
-            endpoint = host_port_and_endpoint[1]
-        if len(endpoint) == 0:
-            endpoint = "/"
-        if ":" not in host_and_port:
-            host = host_and_port
-            port = self.settings["default_port"]
-        else:
-            host, port = host_and_port.split(":")
-            port = int(port)
-        return host, port, endpoint
-
-    def create_new_manager(self, s, name):
-        """
-        Perform general ceptic protocol handshake to continue connection
-        :param s: socket instance (socket.socket)
-        :param name: immutable (string or tuple)
-        :return: CepticResponse instance
-        """
-        # wrap socket with TLS, handshaking happens automatically
-        try:
-            s = self.certificateManager.wrap_socket(s)
-        except CertificateManagerException as e:
-            s.close()
-            raise e
-        # wrap socket with SocketCeptic, to send length of message first
-        s = SocketCeptic.wrap_socket(s)
-        # send server relevant values
-        stream_settings = {"send_buffer_size": self.settings["send_buffer_size"],
-                           "read_buffer_size": self.settings["read_buffer_size"]}
-        # send version
-        s.send_raw(format(self.settings["version"], ">16"))
-        # send frame_min_size
-        s.send_raw(format(self.settings["frame_min_size"], ">16"))
-        # send frame_max_size
-        s.send_raw(format(self.settings["frame_max_size"], ">16"))
-        # send header_min_size
-        s.send_raw(format(self.settings["headers_min_size"], ">16"))
-        # send header_max_size
-        s.send_raw(format(self.settings["headers_max_size"], ">16"))
-        # send stream_min_timeout
-        s.send_raw(format(self.settings["stream_min_timeout"], ">4"))
-        # send stream_timeout
-        s.send_raw(format(self.settings["stream_timeout"], ">4"))
-        # get response
-        response = s.recv_raw(1)
-        # if not positive, get additional info and raise exception
-        if response != "y":
-            error_string = s.recv(1024)
-            raise CepticException("client settings not compatible with server settings: {}".format(error_string))
-        # otherwise receive decided values
-        else:
-            server_frame_max_size_str = s.recv_raw(16).strip()
-            server_headers_max_size_str = s.recv_raw(16).strip()
-            server_stream_timeout_str = s.recv_raw(4).strip()
-            handler_max_count_str = s.recv_raw(4).strip()
-            try:
-                stream_settings["frame_max_size"] = int(server_frame_max_size_str)
-                stream_settings["headers_max_size"] = int(server_headers_max_size_str)
-                stream_settings["stream_timeout"] = int(server_stream_timeout_str)
-                stream_settings["handler_max_count"] = int(handler_max_count_str)
-            except ValueError:
-                error_msg = "server's received values were not all int, could not proceed: {},{},{},{}".format(
-                    server_frame_max_size_str, server_frame_max_size_str, server_stream_timeout_str,
-                    handler_max_count_str)
-                raise CepticException(error_msg)
-            # make sure server's chosen values are valid for client
-            if stream_settings["frame_max_size"] > self.settings["frame_max_size"]:
-                raise CepticException("server chose frame_max_size ({}) higher than client's ({})".format(
-                    stream_settings["frame_max_size"], self.settings["frame_max_size"]))
-            if stream_settings["headers_max_size"] > self.settings["headers_max_size"]:
-                raise CepticException("server chose headers_max_size ({}) higher than client's ({})".format(
-                    stream_settings["headers_max_size"], self.settings["headers_max_size"]))
-            if stream_settings["stream_timeout"] > self.settings["stream_timeout"]:
-                raise CepticException("server chose stream_timeout ({}) higher than client's ({})".format(
-                    stream_settings["stream_timeout"], self.settings["stream_timeout"]))
-        # create stream manager
-        manager = StreamManager.client(s, name, stream_settings, self.remove_manager)
-        self.managerDict[name] = manager
-        manager.daemon = True
-        manager.start()
-
-    def get_manager(self, name):
-        """
-        Get corresponding StreamManager instance from managerDict, or None
-        :param name: string manager name
-        :return: StreamManager instance or None
-        """
-        return self.managerDict.get(name)
-
-    def is_manager_full(self, name):
-        """
-        Returns whether or not manager is at handler limit
-        :param name: string manager name
-        :return: boolean
-        """
-        manager = self.get_manager(name)
-        if not manager:
-            return False
-        return manager.is_handler_limit_reached()
-
-    def connect_protocol_client(self, stream, request):
-        """
-        Perform general ceptic protocol handshake to continue connection
-        :param stream: StreamHandler instance
-        :param request: CepticRequest instance
-        :return: CepticResponse instance
-        """
-        # create frames from request and send
-        stream.send_data(request.get_data(), is_first_header=True)
-        # wait for response
-        try:
-            response_data = stream.get_full_data(max_length=stream.frame_size)
-        except StreamClosedException as e:
-            return CepticResponse(CepticStatusCode.LOCAL_ERROR, errors=str(e))
-        response = CepticResponse.from_data(response_data)
-        # if successful response, continue
-        if response.is_success():
-            # get command_func and settings for command
-            command_func, settings = self.endpointManager.get_command(request.command)
-            # merge settings; request settings take precedence over command settings
-            settings_merged = copy.deepcopy(settings)
-            if request.settings is not None:
-                settings_merged.update(request.settings)
-            # set request settings to merged settings
-            request.settings = settings_merged
-            # set stream compression, based on request header
+            # create frames from request and send
+            stream.send_request(request)
+            # wait for response
+            data = stream.read(max_length=stream.settings.frame_max_size)
+            if not data.is_response():
+                raise StreamException("No CepticResponse found in response")
+            response = data.response
+            # if not success status code, close stream and return response
+            if not CepticStatusCode.is_success(response.status):
+                stream.send_close()
+                return response
+            # set stream encoding based on request header
             stream.set_encode(request.encoding)
-            # perform command and get back response
-            response = command_func(stream, request)
+            # send body if content length header is present and greater than 0
+            if request.content_length:
+                stream.send(request.body)
+            # get response
+            data = stream.read(stream.settings.frame_max_size)
+            if not data.is_response():
+                raise StreamException("No CepticResponse found in post-body response")
+            response = data.response
+            response.stream = StreamHandler(stream)
+            # if content length header is present, receive response body
+            if response.content_length:
+                if response.content_length > self.settings.body_max:
+                    raise StreamException(f"Response content length ({response.content_length} is greater than client "
+                                          f"allows ({self.settings.body_max}")
+                # receive body
+                response.body = stream.read_raw(response.content_length)
+            # close stream if no Exchange header on response
+            if not response.exchange or not request.exchange:
+                stream.send_close()
             return response
-        # otherwise return failed response
-        else:
+        except CepticException as e:
             stream.send_close()
-            return response
+            raise
+        except Exception as e:
+            raise
 
+    def handle_new_connection(self, handler: StreamHandlerInternal) -> None:
+        raise NotImplementedError
+    # endregion
+
+    # region Stop
     def stop(self):
-        """
-        Properly begin to stop client; tells client StreamManagers to stop
-        :return: None
-        """
-        self.shouldStop.set()
-        self.close_all_managers()
-        self.isDoneRunning.set()
+        self.remove_all_managers()
+    # endregion
 
-    def wait_until_not_running(self):
-        """
-        Blocks until client fully closes
-        :return: None
-        """
-        self.isDoneRunning.wait()
-
-    def is_stopped(self):
-        """
-        Returns True if client is not running any managers
-        """
-        return self.shouldStop.is_set() and self.isDoneRunning.is_set()
-
-    def close_all_managers(self):
-        """
-        Closes all client managers
-        :return: None
-        """
-        keys = list(self.managerDict)
-        # stop all managers
-        for key in keys:
+    # region Managers
+    def create_new_manager(self, request: CepticRequest, destination: str) -> StreamManager:
+        try:
+            raw_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            raw_s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            raw_s.settimeout(5)  # TODO: set all timeouts to match settings
+            # s.setblocking(True)
             try:
-                self.managerDict[key].stop()
-            except KeyError:
-                pass
-        # confirm all managers are closed and remove them
-        for key in keys:
+                raw_s.connect((request.host, request.port))
+            except Exception:
+                raw_s.close()
+                raise
+            # connect the socket to the remote endpoint
             try:
-                self.managerDict[key].wait_until_not_running()
-            except KeyError:
-                pass
-            self.remove_manager(key)
+                s: Union[SocketCeptic, None] = None
+                if self.security.secure:
+                    try:
+                        ssl_s: ssl.SSLSocket = self.ssl_context.wrap_socket(raw_s, server_side=False)
+                        # wrap as SocketCeptic
+                        s = SocketCeptic(ssl_s)
+                    except ssl.SSLError as e:
+                        raise CepticException(f"Could not authenticate as client: {e}") from e
+                else:
+                    # wrap as SocketCeptic
+                    s = SocketCeptic(raw_s)
 
-    def remove_manager(self, name):
-        """
-        Remove manager with corresponding name
-        :param name: string name of manager to remove
-        :return: None
-        """
-        if self.managerDict.get(name):
-            try:
-                self.managerDict.pop(name)
-            except KeyError:
-                pass
+                # send version
+                s.send_raw_str(f"{self.settings.version:>16}")
+                # send frame min size
+                s.send_raw_str(f"{self.settings.frame_min_size:>16}")
+                # send frame max size
+                s.send_raw_str(f"{self.settings.frame_max_size:>16}")
+                # send headers min size
+                s.send_raw_str(f"{self.settings.headers_min_size:>16}")
+                # send headers max size
+                s.send_raw_str(f"{self.settings.headers_max_size:>16}")
+                # send stream min timeout
+                s.send_raw_str(f"{self.settings.stream_min_timeout:>4}")
+                # send stream timeout
+                s.send_raw_str(f"{self.settings.stream_timeout:>4}")
+                # get response
+                response = s.recv_raw_str(1)
+                # if not positive, get additional info and raise exception
+                if response != 'y':
+                    error_string = s.recv_str(1024)
+                    raise CepticIOException(f"Client settings not compatible with server settings: {error_string}")
+                # otherwise receive decided values
+                server_frame_max_size_str = s.recv_raw_str(16).strip()
+                server_header_max_size_str = s.recv_raw_str(16).strip()
+                server_stream_timeout_str = s.recv_raw_str(4).strip()
+                server_handler_max_count_str = s.recv_raw_str(4).strip()
+
+                # attempt to convert to integers
+                frame_max_size: int
+                headers_max_size: int
+                stream_timeout: int
+                handler_max_count: int
+                try:
+                    frame_max_size = int(server_frame_max_size_str)
+                    headers_max_size = int(server_header_max_size_str)
+                    stream_timeout = int(server_stream_timeout_str)
+                    handler_max_count = int(server_handler_max_count_str)
+                except ValueError:
+                    raise CepticIOException(f"Server's values were not all integers, could not proceed: "
+                                            f"{server_frame_max_size_str},{server_header_max_size_str},"
+                                            f"{server_stream_timeout_str},{server_handler_max_count_str}")
+
+                # verify server's chosen values are valid for client
+                # TODO: expand checks to check lower bounds
+                stream_settings = StreamSettings(self.settings.send_buffer_size, self.settings.read_buffer_size,
+                                                 frame_max_size, headers_max_size, stream_timeout, handler_max_count)
+                if stream_settings.frame_max_size > self.settings.frame_max_size:
+                    raise CepticIOException(f"Server chose frameMaxSize ({stream_settings.frame_max_size}) "
+                                            f"higher than client's ({self.settings.frame_max_size})")
+                if stream_settings.headers_max_size > self.settings.headers_max_size:
+                    raise CepticIOException(f"Server chose headersMaxSize ({stream_settings.headers_max_size}) "
+                                            f"higher than client's ({self.settings.headers_max_size})")
+                if stream_settings.stream_timeout > self.settings.stream_timeout:
+                    raise CepticIOException(f"Server chose streamTimeout ({stream_settings.stream_timeout}) "
+                                            f"higher than client's ({self.settings.stream_timeout})")
+                # create manager
+                manager = StreamManager(s, uuid.uuid4(), destination, stream_settings, self, is_server=False)
+                # add and start manager
+                self.add_manager(manager)
+                manager.start()
+                return manager
+            except Exception:
+                raw_s.close()
+                raise
+        except Exception:
+            raise
+
+    def add_manager(self, manager: StreamManager) -> None:
+        manager_set = self.destination_map.get(manager.destination)
+        # if manager set already exists for this destination, add manager to that set
+        if manager_set:
+            manager_set.add(manager.manager_id)
+        # otherwise create new set and add to destination map
+        else:
+            manager_set = set()
+            manager_set.add(manager.manager_id)
+            self.destination_map[manager.destination] = manager_set
+        # add manager to dict
+        self.managers[manager.manager_id] = manager
+
+    def get_manager(self, manager_id: UUID) -> Union[StreamManager, None]:
+        return self.managers.get(manager_id)
+
+    def get_available_manager_for_destination(self, destination: str) -> Union[StreamManager, None]:
+        manager_set = self.destination_map.get(destination)
+        # if manager set exists, try to get first manager that isn't saturated with handlers
+        if manager_set:
+            for manager_id in manager_set:
+                manager = self.get_manager(manager_id)
+                if manager and not manager.is_stopped() and not manager.is_handler_limit_reached():
+                    return manager
+        # otherwise return None
+        return None
+
+    def remove_manager(self, manager_id: UUID) -> Union[StreamManager, None]:
+        # remove manager from managers dict
+        try:
+            manager = self.managers.pop(manager_id)
+            manager.stop("removed by CepticClient")
+            # remove manager from manager set in destination map
+            manager_set = self.destination_map.get(manager.destination)
+            if manager_set:
+                try:
+                    manager_set.remove(manager.manager_id)
+                except KeyError:
+                    pass
+            return manager
+        except KeyError:
+            return None
+
+    def remove_all_managers(self) -> list[StreamManager]:
+        removed_managers = []
+        ids = list(self.managers)
+        for manager_id in ids:
+            removed_managers.append(self.remove_manager(manager_id))
+        return removed_managers
+    # endregion

@@ -8,10 +8,10 @@ if version_info < (3, 0):  # if running python 2
 else:
     from queue import Queue
 
-from ceptic.server import server_settings, begin_exchange
-from ceptic.client import client_settings
-from ceptic.common import CepticResponse, CepticException, CepticStatusCode
-from ceptic.streammanager import StreamFrame
+from oldceptic.server import server_settings, begin_exchange
+from oldceptic.client import client_settings
+from oldceptic.common import CepticResponse, CepticException, CepticStatusCode
+from oldceptic.streammanager import StreamFrame
 
 
 # TESTS:

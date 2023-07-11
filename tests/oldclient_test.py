@@ -1,6 +1,6 @@
 import os
 import pytest
-from ceptic.client import CepticClient, client_settings
+from oldceptic.client import CepticClient, client_settings
 
 
 # FIXTURES

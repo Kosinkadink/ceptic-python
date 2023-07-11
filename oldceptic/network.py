@@ -1,7 +1,7 @@
 import select
 from sys import version_info
 
-from ceptic.common import CepticException
+from oldceptic.common import CepticException
 
 
 class SocketCepticException(CepticException):

@@ -1,7 +1,7 @@
 import pytest
 import contextlib
 
-from ceptic.server import CepticServer, server_settings
+from oldceptic.server import CepticServer, server_settings
 
 
 @pytest.fixture(scope="function")

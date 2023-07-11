@@ -3,9 +3,9 @@ import threading
 from time import sleep
 from sys import version_info
 from collections import deque
-from ceptic.common import CepticException, Timer, SafeCounter, CepticResponse
-from ceptic.network import select_ceptic, SocketCepticException
-from ceptic.encode import EncodeGetter
+from oldceptic.common import CepticException, Timer, SafeCounter, CepticResponse
+from oldceptic.network import select_ceptic, SocketCepticException
+from oldceptic.encode import EncodeGetter
 
 
 # for python 2, bind socket.error to ConnectionResetError to avoid NameError

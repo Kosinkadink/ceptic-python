@@ -1,5 +1,5 @@
 import re
-from ceptic.common import CepticException
+from oldceptic.common import CepticException
 
 
 class EndpointManager(object):
