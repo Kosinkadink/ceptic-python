@@ -78,10 +78,10 @@ class SocketCeptic(object):
                 byte_array += part
                 if not part:
                     break
-        except (EOFError, OSError) as e:
-            raise SocketCepticException("No data received (EOF).") from e
         except ConnectionResetError as e:
             raise SocketCepticException("Connection was closed: {}".format(str(e))) from e
+        except (EOFError, OSError) as e:
+            raise SocketCepticException("No data received (EOF).") from e
         return byte_array
 
     def recv_raw_str(self, length: int) -> str:

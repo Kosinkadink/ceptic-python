@@ -92,9 +92,10 @@ class SpreadType(Enum):
 
 class CepticHeaders(object):
     def __init__(self, headers: Union[dict, None]) -> None:
-        self.headers = headers
-        if not self.headers:
+        if not headers:
             self.headers = {}
+        else:
+            self.headers = headers
 
     # region Errors
     @property

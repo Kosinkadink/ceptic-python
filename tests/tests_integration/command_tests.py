@@ -57,13 +57,13 @@ def test_command_unsecure_1000_success(context):
     timer.start()
 
     # Act & Assert
-    for i in range(100):
+    for i in range(1000):
         try:
             request = CepticRequest(CommandType.GET, f"localhost{endpoint}")
-            connect_timer.update()
+            # connect_timer.update()
             response = client.connect(request)
-            connect_timer.stop()
-            print(f"Connection took {connect_timer.get_time_diff() * 1000} ms")
+            # connect_timer.stop()
+            # print(f"Connection took {connect_timer.get_time_diff() * 1000} ms")
             assert response.status == CepticStatusCode.OK
             assert not response.exchange
         except StreamException as e:

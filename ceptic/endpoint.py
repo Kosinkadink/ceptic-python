@@ -330,7 +330,7 @@ class EndpointManager(object):
     def add_command(self, command: str, settings: CommandSettings = None) -> None:
         self.command_map[command] = CommandEntry(command, settings if settings else self.server_settings)
 
-    def get_command(self, command: str) -> CommandEntry:
+    def get_command(self, command: str) -> Union[CommandEntry, None]:
         return self.command_map.get(command)
 
     def remove_command(self, command: str) -> Union[CommandEntry, None]:
@@ -343,13 +343,13 @@ class EndpointManager(object):
         else:
             raise EndpointManagerException(f"command '{command}' not found")
 
-    def add_endpoint(self, command: str, endpoint: str, entry: EndpointEntry, settings: CommandSettings = None) -> None:
+    def add_endpoint(self, command: str, endpoint: str, entry: EndpointEntry, settings: Union[CommandSettings, None] = None) -> None:
         command_entry = self.get_command(command)
         if command_entry:
             command_entry.add_endpoint(endpoint, entry, settings)
         else:
             raise EndpointManagerException(f"command '{command}' not found")
 
-    def remove_endpoint(self, command: str, endpoint: str) -> EndpointSaved:
+    def remove_endpoint(self, command: str, endpoint: str) -> Union[EndpointSaved, None]:
         command_entry = self.get_command(command)
         return command_entry.remove_endpoint(endpoint) if command_entry else None
